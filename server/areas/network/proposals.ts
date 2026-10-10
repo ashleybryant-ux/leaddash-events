@@ -4,6 +4,7 @@
  * Reviewers only see proposals assigned to them, and never the submitter's
  * name, email or bio when blind review is on.
  */
+import { asRichText, cleanRichText, richTextToPlain } from "../../_core/richtext";
 import { z } from "zod";
 import { and, eq, inArray, or } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -156,7 +157,8 @@ const settingsInput = z.object({
   eventId: id,
   opensOn: isoDate.nullable(),
   closesOn: isoDate.nullable(),
-  intro: z.string().trim().max(3000),
+  /** Formatted guidelines from the editor (HTML, cleaned on save). */
+  intro: z.string().trim().max(60000),
   formats: z.array(z.string().trim().min(1).max(120)).min(1).max(20),
   tracks: z.array(z.string().trim().min(1).max(120)).max(30),
   rubric: z.array(z.object({ key: z.string().regex(/^[a-z0-9_]{1,40}$/), label: z.string().trim().min(1).max(80), max: z.number().int().min(1).max(10) })).min(1).max(10),
@@ -208,7 +210,7 @@ const adminRouter = router({
   settings: protectedProcedure.input(z.object({ eventId: id })).query(({ ctx, input }) => {
     const event = requireFull(ctx.user, input.eventId);
     const s = cfpSettingsFor(event.id);
-    return { ...s, open: cfpOpen(s, event), reviewers: reviewersFor(event), link: `${ENV.appUrl}/cfp/${event.slug}` };
+    return { ...s, intro: asRichText(s.intro), open: cfpOpen(s, event), reviewers: reviewersFor(event), link: `${ENV.appUrl}/cfp/${event.slug}` };
   }),
 
   updateSettings: protectedProcedure.input(settingsInput).mutation(({ ctx, input }) => {
@@ -221,7 +223,9 @@ const adminRouter = router({
     }
     const s = cfpSettingsFor(event.id);
     const { eventId: _e, ...rest } = input;
-    getDb().update(schema.cfpSettings).set(rest).where(eq(schema.cfpSettings.id, s.id)).run();
+    const intro = cleanRichText(rest.intro);
+    if (richTextToPlain(intro).length > 15000) throw new TRPCError({ code: "BAD_REQUEST", message: "The guidelines are too long. Keep them under 15,000 characters." });
+    getDb().update(schema.cfpSettings).set({ ...rest, intro }).where(eq(schema.cfpSettings.id, s.id)).run();
     audit(ctx.user, { eventId: event.id, action: "cfp.settings" });
     return { ok: true };
   }),
@@ -408,7 +412,7 @@ export const proposalsRouter = router({
       branding: event.branding,
       logoUrl: fileUrl(event.branding.logoFileId ?? org.logoFileId),
       coverUrl: fileUrl(event.branding.coverFileId),
-      intro: s.intro,
+      intro: asRichText(s.intro),
       opensOn: s.opensOn,
       closesOn: s.closesOn,
       open: cfpOpen(s, event),

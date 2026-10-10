@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { trpc, type RouterOutputs } from "../../lib/trpc";
 import { AdminPage, useAdminEvent } from "../../shells/AdminShell";
-import { CopyButton, EditSection, Empty, ErrorNote, ExpandRow, Field, FolderTabs, KV, Kpi, PageLoading, Pill, THead } from "../../ui/components";
+import { CopyButton, EditSection, Empty, ErrorNote, ExpandRow, Field, FolderTabs, KV, Kpi, PageLoading, Pill, RichText, RichTextEditor, THead } from "../../ui/components";
 import { errorText, toast } from "../../ui/toast";
 import { eachDay, fmtDate, fmtWhen } from "@shared/format";
 
@@ -73,6 +73,7 @@ function SettingsCard({ s }: { s: Settings }) {
         view={
           <div>
             <KV label="Status">{s.open ? <Pill>Open</Pill> : <Pill tone="gray">Closed</Pill>}</KV>
+            <KV label="Guidelines">{s.intro ? <div style={{ maxHeight: 180, overflow: "hidden", maskImage: "linear-gradient(#000 70%, transparent)" }}><RichText html={s.intro} /></div> : null}</KV>
             <KV label="Opens">{fmtDate(s.opensOn)}</KV>
             <KV label="Due date">{fmtDate(s.closesOn)}</KV>
             <KV label="Formats">{s.formats.join(", ")}</KV>
@@ -109,9 +110,11 @@ function SettingsCard({ s }: { s: Settings }) {
                 </select>
               </Field>
             </div>
-            <Field label="Intro on the proposal page">
-              <textarea className="textarea" rows={3} value={d.intro} maxLength={3000} onChange={(e) => setD({ ...d, intro: e.target.value })} />
-            </Field>
+            <div className="col gap-4">
+              <span className="field">Guidelines on the proposal page</span>
+              <RichTextEditor label="Guidelines on the proposal page" value={d.intro} onChange={(html) => setD({ ...d, intro: html })} />
+              <span className="small muted">Use Heading and Subheading for sections. Text pasted from Word or Google Docs keeps its headings, bold and lists.</span>
+            </div>
             <div className="grid-2">
               <Field label="Formats" hint="One per line">
                 <textarea className="textarea" rows={4} value={d.formats} onChange={(e) => setD({ ...d, formats: e.target.value })} />

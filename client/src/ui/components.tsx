@@ -309,3 +309,82 @@ export function Kpi({ label, value, note, bad }: { label: string; value: ReactNo
 export function confirmAction(message: string) {
   return window.confirm(message);
 }
+
+/* ---------- Formatted text ---------- */
+
+type RteCommand = { label: string; title: string; run: () => void; active?: () => boolean };
+
+/**
+ * A small formatted-text editor: headings, bold, italic, underline, lists and
+ * links. Produces HTML; the server keeps only those tags when it saves.
+ */
+export function RichTextEditor({ value, onChange, label, minHeight = 220 }: { value: string; onChange: (html: string) => void; label: string; minHeight?: number }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [, refresh] = useState(0);
+  // Fill the box once (and when the saved value changes from outside), never while typing.
+  useEffect(() => {
+    if (box.current && box.current.innerHTML !== value && document.activeElement !== box.current) box.current.innerHTML = value || "<p><br></p>";
+  }, [value]);
+  const exec = (cmd: string, arg?: string) => {
+    box.current?.focus();
+    document.execCommand(cmd, false, arg);
+    onChange(box.current?.innerHTML ?? "");
+    refresh((n) => n + 1);
+  };
+  const block = () => String(document.queryCommandValue("formatBlock") || "").toLowerCase().replace(/[<>]/g, "");
+  const commands: RteCommand[] = [
+    { label: "Heading", title: "Heading", run: () => exec("formatBlock", block() === "h2" ? "<p>" : "<h2>"), active: () => block() === "h2" },
+    { label: "Subheading", title: "Subheading", run: () => exec("formatBlock", block() === "h3" ? "<p>" : "<h3>"), active: () => block() === "h3" },
+    { label: "B", title: "Bold", run: () => exec("bold"), active: () => document.queryCommandState("bold") },
+    { label: "I", title: "Italic", run: () => exec("italic"), active: () => document.queryCommandState("italic") },
+    { label: "U", title: "Underline", run: () => exec("underline"), active: () => document.queryCommandState("underline") },
+    { label: "Bullets", title: "Bulleted list", run: () => exec("insertUnorderedList"), active: () => document.queryCommandState("insertUnorderedList") },
+    { label: "Numbers", title: "Numbered list", run: () => exec("insertOrderedList"), active: () => document.queryCommandState("insertOrderedList") },
+    {
+      label: "Link",
+      title: "Link",
+      run: () => {
+        const url = window.prompt("Link address (starts with https:// or mailto:)", "https://");
+        if (!url) return;
+        const href = /^(https?:|mailto:)/i.test(url) ? url : /@/.test(url) ? `mailto:${url}` : `https://${url}`;
+        exec("createLink", href);
+      },
+    },
+    { label: "Clear", title: "Clear formatting", run: () => { exec("removeFormat"); exec("formatBlock", "<p>"); } },
+  ];
+  const inBox = () => !!box.current && box.current.contains(document.getSelection()?.anchorNode ?? null);
+  return (
+    <div className="rte">
+      <div className="rte-tools" role="toolbar" aria-label={`${label} formatting`}>
+        {commands.map((c) => (
+          <button key={c.label} type="button" title={c.title} aria-label={c.title} aria-pressed={c.active ? inBox() && c.active() : undefined} onMouseDown={(e) => e.preventDefault()} onClick={c.run} style={c.label === "B" ? { fontWeight: 800 } : c.label === "I" ? { fontStyle: "italic" } : c.label === "U" ? { textDecoration: "underline" } : undefined}>
+            {c.label}
+          </button>
+        ))}
+      </div>
+      <div
+        ref={box}
+        className="rte-box rich"
+        contentEditable
+        suppressContentEditableWarning
+        role="textbox"
+        aria-multiline="true"
+        aria-label={label}
+        style={{ minHeight }}
+        onInput={() => onChange(box.current?.innerHTML ?? "")}
+        onFocus={() => document.execCommand("defaultParagraphSeparator", false, "p")}
+        onKeyDown={(e) => {
+          // A new line after a heading starts normal text, not another heading.
+          if (e.key === "Enter" && !e.shiftKey && (block() === "h2" || block() === "h3")) setTimeout(() => exec("formatBlock", "<p>"), 0);
+        }}
+        onKeyUp={() => refresh((n) => n + 1)}
+        onMouseUp={() => refresh((n) => n + 1)}
+      />
+    </div>
+  );
+}
+
+/** Shows formatted text that the server already cleaned. */
+export function RichText({ html, className = "" }: { html: string; className?: string }) {
+  return <div className={`rich ${className}`} dangerouslySetInnerHTML={{ __html: html }} />;
+}

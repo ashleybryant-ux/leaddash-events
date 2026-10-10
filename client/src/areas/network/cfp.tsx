@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { trpc, type RouterOutputs } from "../../lib/trpc";
 import { brandStyle } from "../../shells/AttendeeShell";
 import { SignIn } from "../../core/SignIn";
-import { Avatar, ErrorNote, Field, PageLoading, UploadButton } from "../../ui/components";
+import { Avatar, ErrorNote, Field, PageLoading, RichText, UploadButton } from "../../ui/components";
 import { errorText, toast } from "../../ui/toast";
 import { fmtDate, fmtWhen } from "@shared/format";
 
@@ -299,7 +299,7 @@ export function ProposalSubmitPage({ slug }: { slug: string }) {
     <div className="app" style={brandStyle(i.branding, i.coverUrl)}>
       <Header info={i} />
       <main className="app-body" style={{ gap: 14 }}>
-        {i.intro ? <p style={{ margin: 0, whiteSpace: "pre-wrap", color: "var(--ink-2)" }}>{i.intro}</p> : null}
+        {i.intro ? <div className="card" style={{ padding: 16 }}><RichText html={i.intro} /></div> : null}
         {!auth.data ? (
           <SignIn title="Sign in to submit" subtitle="Enter your email. We will send you a six-digit code so we can reach you about your proposal." eventName={i.shortName} />
         ) : (

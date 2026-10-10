@@ -232,3 +232,21 @@ h1, h2, h3 { margin: 0; }
   .print-only { display: block; }
   body { background: #FFFFFF; }
 }
+
+/* ---------- Formatted text (call for proposals guidelines) ---------- */
+.rich { font-size: 14px; line-height: 1.6; color: var(--ink-2); overflow-wrap: anywhere; }
+.rich > :first-child { margin-top: 0; }
+.rich > :last-child { margin-bottom: 0; }
+.rich p { margin: 0 0 10px; }
+.rich h2 { font-size: 18px; font-weight: 800; color: var(--ink); margin: 18px 0 8px; }
+.rich h3 { font-size: 15px; font-weight: 800; color: var(--ink); margin: 14px 0 6px; }
+.rich ul, .rich ol { margin: 0 0 10px; padding-left: 22px; }
+.rich li { margin: 2px 0; }
+.rich a { color: var(--brand); font-weight: 600; }
+.rich blockquote { margin: 0 0 10px; padding-left: 12px; border-left: 3px solid var(--line); }
+.rte { border: 1px solid var(--field); border-radius: 8px; background: #FFFFFF; overflow: hidden; }
+.rte:focus-within { border-color: var(--brand); outline: 2px solid var(--brand-tint); }
+.rte-tools { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px; border-bottom: 1px solid var(--line); background: var(--brand-tint-2); }
+.rte-tools button { height: 28px; min-width: 30px; padding: 0 8px; border-radius: 6px; border: 1px solid #D5DEDA; background: #FFFFFF; color: var(--ink); font-size: 12px; font-weight: 700; cursor: pointer; }
+.rte-tools button[aria-pressed="true"] { background: var(--brand); border-color: var(--brand); color: #FFFFFF; }
+.rte-box { padding: 10px 12px; outline: none; max-height: 520px; overflow-y: auto; }
