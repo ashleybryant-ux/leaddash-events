@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { and, count, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
 import { getDb, schema } from "../_core/db";
-import { attendeeFor, eventAccess, forbidden, getEvent, getEventBySlug, isLeadDashStaff, memberFor, orgRole, requireEventAdmin, requireOrgAdmin, audit } from "../_core/access";
+import { attendeeFor, eventAccess, forbidden, getEvent, getEventBySlug, isLeadDashStaff, orgRole, requireEventAdmin, requireOrgAdmin, audit } from "../_core/access";
 import { fileUrl, saveFile } from "../_core/files";
 import { ENV } from "../_core/env";
 import { markRead, unreadCount } from "../_core/push";
@@ -71,13 +71,13 @@ export const coreRouter = router({
       }),
 
     update: protectedProcedure
-      .input(z.object({ orgId: z.number(), name: z.string().min(2).max(120), colorPrimary: hex, colorAccent: hex, logoFileId: z.number().nullable(), allEvents: z.boolean().default(false), memberHub: z.boolean().optional() }))
+      .input(z.object({ orgId: z.number(), name: z.string().min(2).max(120), colorPrimary: hex, colorAccent: hex, logoFileId: z.number().nullable(), allEvents: z.boolean().default(false) }))
       .mutation(({ ctx, input }) => {
         requireOrgAdmin(ctx.user, input.orgId);
         const db = getDb();
         const before = db.select().from(schema.organizations).where(eq(schema.organizations.id, input.orgId)).get();
         db.update(schema.organizations)
-          .set({ name: input.name, colorPrimary: input.colorPrimary, colorAccent: input.colorAccent, logoFileId: input.logoFileId, ...(input.memberHub === undefined ? {} : { memberHub: input.memberHub }) })
+          .set({ name: input.name, colorPrimary: input.colorPrimary, colorAccent: input.colorAccent, logoFileId: input.logoFileId })
           .where(eq(schema.organizations.id, input.orgId))
           .run();
         // Events that still use the organization's colors or logo follow the change.
@@ -328,13 +328,6 @@ export const coreRouter = router({
         .filter((e) => (seen.has(e.id) ? false : (seen.add(e.id), true)))
         .map((e) => ({ ...publicEvent(e), isAttendee: asAttendee.includes(e.id), isAdmin: orgIds.includes(e.orgId) || asStaff.includes(e.id) }));
     }),
-
-    /** Memberships the signed-in person holds (for the member hub link). */
-    memberships: protectedProcedure.query(({ ctx }) => {
-      const db = getDb();
-      const orgs = db.select().from(schema.organizations).all();
-      return orgs.map((o) => ({ org: o, member: memberFor(ctx.user, o.id) })).filter((r) => r.member).map((r) => ({ orgSlug: r.org.slug, orgName: r.org.name }));
-    }),
   }),
 
   files: router({
@@ -359,7 +352,7 @@ export const coreRouter = router({
           const isStaff = access.admin || Object.values(access.areas).some((v) => v === "edit");
           if (!isStaff && !attendeeFor(ctx.user, ev.id)) throw forbidden();
         } else if (orgId) {
-          if (!orgRole(ctx.user, orgId) && !memberFor(ctx.user, orgId)) throw forbidden();
+          if (!orgRole(ctx.user, orgId)) throw forbidden();
         }
         const f = saveFile({ orgId, name: input.name, mime: input.mime, base64: input.base64, isPublic: input.isPublic, userId: ctx.user.id });
         return { id: f.id, url: fileUrl(f.id)!, name: f.name, mime: f.mime, size: f.size };

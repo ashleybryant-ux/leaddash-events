@@ -146,18 +146,12 @@ export function visibleGroups(event: AdminEvent): NavGroup[] {
     .filter((g) => g.items.length);
 }
 
-/** The organization's own pages (Members and its pages only when the organization uses the member hub). */
-function orgPages(memberHub: boolean): (NavItem & { icon: ReactNode; short: string; related?: NavItem[] })[] {
-  const member = [
-    { label: "Members", href: "/admin/members" },
-    { label: "Divisions and committees", href: "/admin/divisions" },
-    { label: "Documents", href: "/admin/documents" },
-  ];
+/** The organization's own pages. */
+/** The organization's own pages. */
+function orgPages(): (NavItem & { icon: ReactNode; short: string; related?: NavItem[] })[] {
   return [
     { label: "Events", short: "Events", href: "/admin", icon: <IconHome /> },
     { label: "Payments", short: "Payments", href: "/admin/payments", icon: <IconMoney /> },
-    { label: "Organization reports", short: "Reports", href: "/admin/insights", icon: <IconChart /> },
-    ...(memberHub ? [{ label: "Members", short: "Members", href: "/admin/members", icon: <IconStar />, related: member }] : []),
     { label: "Organization settings", short: "Settings", href: "/admin/settings", icon: <IconGear /> },
   ];
 }
@@ -258,7 +252,6 @@ export function AdminPage({ title: givenTitle, sub: givenSub, actions, children,
   const allOrgs = trpc.core.org.all.useQuery(undefined, { enabled: me.isLeadDashStaff });
   const orgRow = (me.isLeadDashStaff ? allOrgs.data?.find((o) => o.id === orgId) : undefined) ?? orgs.find((o) => o.id === orgId);
   const orgName = orgRow?.name ?? "";
-  const memberHub = orgRow ? orgRow.memberHub !== false : true;
   const isOrgAdmin = !!orgId && (orgs.some((o) => o.id === orgId) || me.isLeadDashStaff);
 
   // Remember the last event opened so the menu can offer it on organization pages too.
@@ -272,7 +265,7 @@ export function AdminPage({ title: givenTitle, sub: givenSub, actions, children,
     }
   }, [event]);
 
-  const org = isOrgAdmin ? orgPages(memberHub) : [];
+  const org = isOrgAdmin ? orgPages() : [];
   const groups = event ? visibleGroups(event) : [];
   const group = groups.find((g) => g.items.some((i) => isHere(i.href)));
   const page = group?.items.find((i) => isHere(i.href));

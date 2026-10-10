@@ -145,28 +145,6 @@ export function requireAttendee(user: User, eventId: number) {
   return row;
 }
 
-/** The person's member record in an organization, linking it to their sign-in the first time. */
-export function memberFor(user: User, orgId: number) {
-  const db = getDb();
-  let row = db
-    .select()
-    .from(schema.members)
-    .where(and(eq(schema.members.orgId, orgId), eq(schema.members.userId, user.id)))
-    .get();
-  if (!row) {
-    row = db
-      .select()
-      .from(schema.members)
-      .where(and(eq(schema.members.orgId, orgId), eq(schema.members.email, user.email.toLowerCase())))
-      .get();
-    if (row && !row.userId) {
-      db.update(schema.members).set({ userId: user.id }).where(eq(schema.members.id, row.id)).run();
-      row = { ...row, userId: user.id };
-    }
-  }
-  return row;
-}
-
 export function audit(user: User | null, opts: { orgId?: number | null; eventId?: number | null; action: string; detail?: string }) {
   getDb()
     .insert(schema.auditLog)

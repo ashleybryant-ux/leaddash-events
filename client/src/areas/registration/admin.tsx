@@ -322,7 +322,7 @@ function TicketEditor({ event, ticket, tickets, readOnly, onDone }: { event: Adm
         <Field label="Who can buy it">
           <select className="select" value={f.audience} onChange={set("audience")}>
             <option value="anyone">Anyone</option>
-            <option value="members">Active members only</option>
+            <option value="members">Members only (asks for member ID)</option>
           </select>
         </Field>
         <Field label="Badge ribbon">

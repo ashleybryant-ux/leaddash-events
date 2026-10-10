@@ -97,16 +97,6 @@ export function ticketsOnSale(ev: Event, opts: { onlyIds?: number[]; now?: Date 
     });
 }
 
-/** An active member of the organization with this email. */
-export function isActiveMember(orgId: number, email: string, today: string) {
-  const m = getDb()
-    .select()
-    .from(schema.members)
-    .where(and(eq(schema.members.orgId, orgId), eq(schema.members.email, email.trim().toLowerCase())))
-    .get();
-  return !!m && m.status === "active" && (!m.expiresOn || m.expiresOn >= today);
-}
-
 export const normalizeCode = (code: string) => code.trim().toUpperCase().replace(/\s+/g, "");
 
 export function findCoupon(ev: Event, code: string | undefined | null): Coupon | null {

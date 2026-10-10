@@ -59,14 +59,14 @@ const HOST_LABELS = ["Website", "Email", "Phone", "Instagram", "Facebook", "Link
 function hostView(ev: typeof schema.events.$inferSelect) {
   const link = (label: string) => ev.hostLinks.find((l) => l.label === label)?.url ?? "";
   const org = getDb().select({ slug: schema.organizations.slug, name: schema.organizations.name, logoFileId: schema.organizations.logoFileId }).from(schema.organizations).where(eq(schema.organizations.id, ev.orgId)).get()!;
-  const join = ev.hostJoinUrl === "member" ? `/m/${org.slug}` : ev.hostJoinUrl === "website" ? link("Website") : ev.hostJoinUrl;
+  const join = ev.hostJoinUrl === "website" ? link("Website") : ev.hostJoinUrl === "member" ? "" : ev.hostJoinUrl;
   return {
     name: ev.hostName || org.name,
     about: ev.hostAbout,
     mission: ev.hostMission,
     imageFileId: ev.hostImageFileId,
     imageUrl: fileUrl(ev.hostImageFileId ?? org.logoFileId),
-    joinMode: ev.hostJoinUrl === "member" ? "member" : ev.hostJoinUrl === "website" ? "website" : ev.hostJoinUrl ? "custom" : "hidden",
+    joinMode: ev.hostJoinUrl === "website" ? "website" : ev.hostJoinUrl && ev.hostJoinUrl !== "member" ? "custom" : "hidden",
     joinUrl: join,
     website: link("Website"),
     email: link("Email").replace(/^mailto:/, ""),
@@ -153,7 +153,7 @@ export const hostRouter = router({
         about: z.string().max(5000),
         mission: z.string().max(2000).default(""),
         imageFileId: z.number().int().nullable(),
-        joinMode: z.enum(["member", "website", "custom", "hidden"]),
+        joinMode: z.enum(["website", "custom", "hidden"]),
         joinUrl: url.default(""),
         website: url,
         email: z.union([z.literal(""), z.string().trim().email().max(200)]),

@@ -3,10 +3,9 @@ import { programArea } from "./program";
 import { registrationArea } from "./registration";
 import { ceArea } from "./ce";
 import { networkArea } from "./network";
-import { memberArea } from "./member";
 import type { Job } from "./types";
 
-export const AREAS = { program: programArea, registration: registrationArea, ce: ceArea, network: networkArea, member: memberArea };
+export const AREAS = { program: programArea, registration: registrationArea, ce: ceArea, network: networkArea };
 const list = Object.values(AREAS);
 
 /** Runs every area's defaults for a new event. */

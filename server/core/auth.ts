@@ -46,7 +46,7 @@ export const authRouter = router({
     if (!ctx.user) return null;
     const db = getDb();
     const orgs = db
-      .select({ id: schema.organizations.id, name: schema.organizations.name, slug: schema.organizations.slug, memberHub: schema.organizations.memberHub, role: schema.orgMembers.role })
+      .select({ id: schema.organizations.id, name: schema.organizations.name, slug: schema.organizations.slug, role: schema.orgMembers.role })
       .from(schema.orgMembers)
       .innerJoin(schema.organizations, eq(schema.organizations.id, schema.orgMembers.orgId))
       .where(eq(schema.orgMembers.userId, ctx.user.id))

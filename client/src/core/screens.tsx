@@ -9,11 +9,10 @@ import { fmtDates, fmtMoney } from "@shared/format";
 import { SignIn } from "./SignIn";
 import { IconCheck, IconLeaf } from "../ui/icons";
 
-/** "/": where a signed-in person goes (their events, member hubs, admin). */
+/** "/": where a signed-in person goes (their events, admin). */
 export function HomeScreen() {
   const auth = trpc.auth.me.useQuery();
   const mine = trpc.core.events.mine.useQuery(undefined, { enabled: !!auth.data });
-  const memberships = trpc.core.events.memberships.useQuery(undefined, { enabled: !!auth.data });
   const [, navigate] = useLocation();
   if (auth.isLoading) return <PageLoading />;
   return (
@@ -52,16 +51,6 @@ export function HomeScreen() {
             ) : (
               <Empty>No events yet for {auth.data.email}.</Empty>
             )}
-            {memberships.data?.length ? (
-              <>
-                <div className="section-title">Member hubs</div>
-                {memberships.data.map((m) => (
-                  <Link key={m.orgSlug} href={`/m/${m.orgSlug}`} className="tile">
-                    <span className="strong grow">{m.orgName}</span>
-                  </Link>
-                ))}
-              </>
-            ) : null}
           </>
         )}
       </main>
@@ -278,13 +267,13 @@ export function OrgSettingsScreen() {
   const update = trpc.core.org.update.useMutation();
   const addAdmin = trpc.core.org.addAdmin.useMutation();
   const removeAdmin = trpc.core.org.removeAdmin.useMutation();
-  const [draft, setDraft] = useState<{ name: string; colorPrimary: string; colorAccent: string; logoFileId: number | null; logoUrl: string | null; allEvents?: boolean; memberHub: boolean } | null>(null);
+  const [draft, setDraft] = useState<{ name: string; colorPrimary: string; colorAccent: string; logoFileId: number | null; logoUrl: string | null; allEvents?: boolean } | null>(null);
   const [invite, setInvite] = useState({ email: "", name: "" });
   if (!orgId) return <AdminPage title="Organization settings"><Empty>Pick an organization on the Events screen first.</Empty></AdminPage>;
   if (org.isLoading) return <AdminPage title="Organization settings"><PageLoading /></AdminPage>;
   if (org.error) return <AdminPage title="Organization settings"><ErrorNote error={org.error} /></AdminPage>;
   const o = org.data!;
-  const d = draft ?? { name: o.name, colorPrimary: o.colorPrimary, colorAccent: o.colorAccent, logoFileId: o.logoFileId, logoUrl: o.logoUrl, memberHub: o.memberHub };
+  const d = draft ?? { name: o.name, colorPrimary: o.colorPrimary, colorAccent: o.colorAccent, logoFileId: o.logoFileId, logoUrl: o.logoUrl, allEvents: false };
   return (
     <AdminPage title="Organization settings" sub={o.name}>
       <div className="card card-pad">
@@ -293,7 +282,7 @@ export function OrgSettingsScreen() {
           saving={update.isPending}
           onCancel={() => setDraft(null)}
           onSave={async () => {
-            const res = await update.mutateAsync({ orgId, name: d.name, colorPrimary: d.colorPrimary, colorAccent: d.colorAccent, logoFileId: d.logoFileId, allEvents: !!d.allEvents, memberHub: d.memberHub });
+            const res = await update.mutateAsync({ orgId, name: d.name, colorPrimary: d.colorPrimary, colorAccent: d.colorAccent, logoFileId: d.logoFileId, allEvents: !!d.allEvents });
             await Promise.all([utils.core.org.get.invalidate(), utils.core.org.all.invalidate(), utils.auth.me.invalidate(), utils.core.events.invalidate(), utils.program.branding.invalidate()]);
             setDraft(null);
             toast(res.eventsUpdated ? `Saved. ${res.eventsUpdated === 1 ? "1 event uses" : `${res.eventsUpdated} events use`} the new look.` : "Saved");
@@ -308,7 +297,6 @@ export function OrgSettingsScreen() {
                 </span>
               </KV>
               <KV label="Logo">{o.logoUrl ? <img src={o.logoUrl} alt="Logo" style={{ height: 36 }} /> : null}</KV>
-              <KV label="Member hub">{o.memberHub ? `On · ${window.location.origin}/m/${o.slug}` : "Off"}</KV>
             </div>
           }
           edit={
@@ -334,10 +322,6 @@ export function OrgSettingsScreen() {
                 <label className="check">
                   <input type="checkbox" checked={!!d.allEvents} onChange={(e) => setDraft({ ...d, allEvents: e.target.checked })} />
                   Use these colors and logo on every event
-                </label>
-                <label className="check">
-                  <input type="checkbox" checked={d.memberHub} onChange={(e) => setDraft({ ...d, memberHub: e.target.checked })} />
-                  Use the member hub (Members, Divisions and committees, Documents)
                 </label>
               </div>
             </div>

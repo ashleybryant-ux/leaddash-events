@@ -204,11 +204,11 @@ describe("program", () => {
     const again = await admin.program.branding.get({ eventId: event.id });
     expect(again).toMatchObject({ appName: "NABC 2027", colorPrimary: "#123456", badge: { nameStyle: "full" }, features: { dining: false } });
 
-    await admin.program.host.update({ eventId: event.id, name: "NABC", about: "About us", mission: "", imageFileId: null, joinMode: "member", joinUrl: "", website: "https://nabc.example.org", email: "info@example.org", phone: "555-0100", instagram: "", facebook: "", linkedin: "" });
+    await admin.program.host.update({ eventId: event.id, name: "NABC", about: "About us", mission: "", imageFileId: null, joinMode: "hidden", joinUrl: "", website: "https://nabc.example.org", email: "info@example.org", phone: "555-0100", instagram: "", facebook: "", linkedin: "" });
     const { api } = addAttendee(event.id, "a@example.com");
     const host = await api.program.host.get({ slug: event.slug });
     expect(host).toMatchObject({ name: "NABC", email: "info@example.org", phone: "555-0100", website: "https://nabc.example.org" });
-    expect(host.joinUrl).toMatch(/^\/m\//);
+    expect(host.joinUrl).toBe("");
     expect((await api.program.dining.list({ slug: event.slug })).menu).toEqual([]);
   });
   it("saves the app look, keeps it when left out, and shows it on attendee pages", async () => {

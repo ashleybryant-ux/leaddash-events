@@ -434,7 +434,7 @@ export function TranscriptScreen() {
               </button>
             </div>
           </div>
-          {d.events.length || d.entries.length ? (
+          {d.events.length ? (
             <div className="card" style={{ overflow: "hidden" }}>
               <div className="list">
                 {d.events.map((e) => (
@@ -442,15 +442,6 @@ export function TranscriptScreen() {
                     <span className="col" style={{ gap: 2 }}>
                       <span className="xstrong" style={{ fontSize: 14 }}>{e.name}</span>
                       <span className="small muted">{fmtDates(e.startDate, e.endDate)} · {e.sessions} {e.sessions === 1 ? "session" : "sessions"}</span>
-                    </span>
-                    <span className="xstrong" style={{ fontSize: 15 }}>{hoursText(e.hours)}</span>
-                  </div>
-                ))}
-                {d.entries.map((e) => (
-                  <div key={`x${e.id}`} style={rowStyle}>
-                    <span className="col" style={{ gap: 2 }}>
-                      <span className="xstrong" style={{ fontSize: 14 }}>{e.title}</span>
-                      <span className="small muted">{[e.provider, fmtDate(e.date)].filter(Boolean).join(" · ")}</span>
                     </span>
                     <span className="xstrong" style={{ fontSize: 15 }}>{hoursText(e.hours)}</span>
                   </div>

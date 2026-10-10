@@ -3,7 +3,7 @@ import { trpc } from "../lib/trpc";
 import { errorText } from "../ui/toast";
 
 /**
- * Email-code sign-in. Used by the attendee app, the admin and the member hub.
+ * Email-code sign-in. Used by the attendee app and the admin.
  * `variant="app"` uses the larger attendee-app fields.
  */
 export function SignIn({ title = "Sign in", subtitle, eventName, variant = "app", onDone }: { title?: string; subtitle?: string; eventName?: string; variant?: "app" | "admin"; onDone?: () => void }) {

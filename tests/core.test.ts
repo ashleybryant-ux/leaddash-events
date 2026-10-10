@@ -55,9 +55,5 @@ describe("sign-in and access", () => {
     const stranger = caller(user("stranger@example.com"));
     await expect(stranger.core.events.home({ eventId: event.id })).rejects.toThrow();
 
-    // The member hub can be turned off for an organization that does not use it.
-    await admin.core.org.update({ orgId: org.id, name: org.name, colorPrimary: "#1F5F4A", colorAccent: "#E88A3A", logoFileId: null, memberHub: false });
-    expect((await admin.core.org.get({ orgId: org.id })).memberHub).toBe(false);
-    expect((await admin.auth.me())?.orgs[0].memberHub).toBe(false);
   });
 });

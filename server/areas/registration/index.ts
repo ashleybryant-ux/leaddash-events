@@ -24,7 +24,6 @@ import {
   eventToday,
   findCoupon,
   fulfillOrder,
-  isActiveMember,
   markRefunded,
   newDoneToken,
   normalizeCode,
@@ -137,9 +136,8 @@ function validatePurchase(slug: string, ticketId: number, buyer: Buyer | null, c
   if (buyer) {
     const email = buyer.email.trim().toLowerCase();
     checkAnswers(cleanQuestions(page.questions), buyer);
-    if (ticket.membersOnly && !isActiveMember(ev.orgId, email, eventToday(ev))) {
-      throw bad("This ticket is for active members. Use the email on your membership, or pick another ticket.");
-    }
+    // Members tickets ask for the buyer's member ID; the organization checks it against its own membership records.
+    if (ticket.membersOnly && !buyer.answers.member_id?.trim()) throw bad("Enter your member ID for this ticket.");
     const existing = getDb()
       .select()
       .from(schema.attendees)

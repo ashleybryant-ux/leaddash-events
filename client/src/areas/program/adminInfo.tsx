@@ -1104,8 +1104,8 @@ function PlaceEditor({ place, onDone }: { place?: Place; onDone: () => void }) {
 
 /* ---------------- About your host ---------------- */
 
-type JoinMode = "member" | "website" | "custom" | "hidden";
-const JOIN_LABELS: Record<JoinMode, string> = { member: "Membership payment page", website: "Host website", custom: "Another link", hidden: "Hide the button" };
+type JoinMode = "website" | "custom" | "hidden";
+const JOIN_LABELS: Record<JoinMode, string> = { website: "Host website", custom: "Another link", hidden: "Hide the button" };
 
 /** /admin/e/:eventId/host: read view with Edit; Edit opens the fields in place. */
 export function AdminHostScreen() {

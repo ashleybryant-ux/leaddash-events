@@ -193,14 +193,11 @@ describe("CE: session check-in, evaluations and certificates", () => {
     await admin.ce.certificates.issue({ eventId: event.id, attendeeId: now.attendee.id, sessionId: s1.id });
     await admin.ce.certificates.issue({ eventId: older.id, attendeeId: before.id, sessionId: s2.id });
     await other.admin.ce.certificates.issue({ eventId: other.event.id, attendeeId: elsewhere.id, sessionId: s3.id });
-    db.insert(schema.ceEntries).values({ orgId: org.id, email: "jordan@example.com", title: "Ethics webinar", provider: "NABC", date: "2026-10-09", hours: 2 }).run();
 
     const t = await now.api.ce.certificates.transcript({ slug: event.slug });
-    expect(t.totalHours).toBe(6.5);
+    expect(t.totalHours).toBe(4.5);
     expect(t.events.map((e) => e.name)).toEqual(["NABC Annual Conference", "NABC Annual Conference 2026"]);
-    expect(t.entries.map((e) => e.title)).toEqual(["Ethics webinar"]);
     const csv = await now.api.ce.certificates.transcriptCsv({ slug: event.slug });
-    expect(csv.csv).toContain("Ethics webinar");
     expect(csv.csv).not.toContain("Another organization");
   });
 

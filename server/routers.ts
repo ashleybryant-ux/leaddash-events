@@ -10,7 +10,6 @@ export const appRouter = router({
   registration: AREAS.registration.router,
   ce: AREAS.ce.router,
   network: AREAS.network.router,
-  member: AREAS.member.router,
 });
 
 export type AppRouter = typeof appRouter;

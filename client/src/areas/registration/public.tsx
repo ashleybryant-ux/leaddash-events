@@ -137,7 +137,7 @@ function TicketChoice({ tickets, value, onChange }: { tickets: Offer[]; value: n
   );
 }
 
-function DetailsFields({ questions, buyer, set }: { questions: Question[]; buyer: Buyer; set: (b: Buyer) => void }) {
+function DetailsFields({ questions, buyer, set, memberTicket = false }: { questions: Question[]; buyer: Buyer; set: (b: Buyer) => void; memberTicket?: boolean }) {
   const field = (k: keyof Buyer) => (e: { target: { value: string } }) => set({ ...buyer, [k]: e.target.value });
   const answer = (key: string) => (e: { target: { value: string } }) => set({ ...buyer, answers: { ...buyer.answers, [key]: e.target.value } });
   const req = (q: Question) => (q.required ? "" : " (optional)");
@@ -157,6 +157,12 @@ function DetailsFields({ questions, buyer, set }: { questions: Question[]; buyer
           Email
           <input className="input" type="email" autoComplete="email" inputMode="email" value={buyer.email} onChange={field("email")} />
         </label>
+        {memberTicket ? (
+          <label className="field span-2">
+            Member ID
+            <input className="input" value={buyer.answers.member_id ?? ""} onChange={answer("member_id")} />
+          </label>
+        ) : null}
         {questions.map((q) => {
           if (q.locked || q.key === "name_email") return null;
           if (q.key === "mobile")
@@ -290,7 +296,7 @@ export function RegisterScreen({ slug }: { slug: string }) {
       <main className="app-body" style={{ paddingTop: 14 }}>
         <TicketChoice tickets={d.tickets} value={f.ticketId} onChange={f.setTicketId} />
         <div style={{ fontSize: 14, fontWeight: 800, paddingTop: 4 }}>Your details</div>
-        <DetailsFields questions={d.page.questions} buyer={f.buyer} set={f.setBuyer} />
+        <DetailsFields questions={d.page.questions} buyer={f.buyer} set={f.setBuyer} memberTicket={!!f.chosen?.membersOnly} />
       </main>
       <div className="app-footer">
         {f.error ? <div className="err" role="alert">{f.error}</div> : null}
@@ -583,7 +589,7 @@ export function EmbedScreen({ slug }: { slug: string }) {
           ) : (
             <>
               <TicketChoice tickets={d.tickets} value={f.ticketId} onChange={f.setTicketId} />
-              <DetailsFields questions={d.page.questions} buyer={f.buyer} set={f.setBuyer} />
+              <DetailsFields questions={d.page.questions} buyer={f.buyer} set={f.setBuyer} memberTicket={!!f.chosen?.membersOnly} />
               {f.error ? <div className="err" role="alert">{f.error}</div> : null}
               <button className="btn btn-primary btn-lg btn-block" disabled={f.busy} onClick={() => f.submit((draft) => setPaying(draft))}>
                 {f.free ? "Register" : "Continue to payment"}

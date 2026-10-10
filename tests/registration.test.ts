@@ -163,15 +163,12 @@ describe("registration", () => {
     await expect(admin.registration.tickets.save({ eventId: event.id, id: earlyId, name: "Member, early bird", priceCents: 25000, quantity: 300, saleEndsOn: null, afterSale: "switch", switchToTicketId: member.id, includes: "All 3 days", audience: "members", active: true })).rejects.toThrow();
   });
 
-  it("sells member tickets only to active members", async () => {
-    const { event, org, member } = await setup();
+  it("asks for a member ID on members tickets", async () => {
+    const { event, member } = await setup();
     setTicket(member.id, { active: true });
     const pub = caller(null);
-    await expect(pub.registration.check({ slug: event.slug, ticketId: member.id, buyer: buyer("guest@example.com") })).rejects.toThrow(/active members/);
-    getDb().insert(schema.members).values({ orgId: org.id, email: "member@example.com", firstName: "Mia", lastName: "Member", memberNumber: "1001", cardToken: "card-1", status: "active" }).run();
-    getDb().insert(schema.members).values({ orgId: org.id, email: "lapsed@example.com", firstName: "Lee", lastName: "Lapsed", memberNumber: "1002", cardToken: "card-2", status: "lapsed" }).run();
-    await expect(pub.registration.check({ slug: event.slug, ticketId: member.id, buyer: buyer("Member@Example.com") })).resolves.toMatchObject({ amountCents: 0 });
-    await expect(pub.registration.check({ slug: event.slug, ticketId: member.id, buyer: buyer("lapsed@example.com") })).rejects.toThrow(/active members/);
+    await expect(pub.registration.check({ slug: event.slug, ticketId: member.id, buyer: buyer("guest@example.com") })).rejects.toThrow(/member ID/);
+    await expect(pub.registration.check({ slug: event.slug, ticketId: member.id, buyer: { ...buyer("member@example.com"), answers: { member_id: "NB-1001" } } })).resolves.toMatchObject({ amountCents: 0 });
   });
 
   it("pays on the connected account and fulfills only once", async () => {

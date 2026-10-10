@@ -179,15 +179,8 @@ export function transcriptFor(orgId: number, email: string) {
     })
     .filter((e) => e.sessions > 0)
     .sort((a, b) => b.startDate.localeCompare(a.startDate));
-  const entries = db
-    .select()
-    .from(schema.ceEntries)
-    .where(and(eq(schema.ceEntries.orgId, orgId), eq(schema.ceEntries.email, clean)))
-    .all()
-    .sort((a, b) => b.date.localeCompare(a.date))
-    .map((e) => ({ id: e.id, title: e.title, provider: e.provider, date: e.date, hours: e.hours, certificateUrl: fileUrl(e.certificateFileId) }));
-  const total = byEvent.reduce((n, e) => n + e.hours, 0) + entries.reduce((n, e) => n + e.hours, 0);
-  return { totalHours: Math.round(total * 100) / 100, events: byEvent, entries };
+  const total = byEvent.reduce((n, e) => n + e.hours, 0);
+  return { totalHours: Math.round(total * 100) / 100, events: byEvent };
 }
 
 export const certificatesRouter = router({
@@ -374,7 +367,6 @@ export const certificatesRouter = router({
     const t = transcriptFor(ev.orgId, a.email);
     const rows: unknown[][] = [
       ...t.events.flatMap((e) => e.certificates.map((c) => [e.name, c.title, fmtDate(c.date), c.hours, c.code, `${ENV.appUrl}/cert/${c.code}`])),
-      ...t.entries.map((e) => [e.provider || "Outside CE", e.title, fmtDate(e.date), e.hours, "", ""]),
     ];
     rows.push(["Total", "", "", t.totalHours, "", ""]);
     return { filename: "ce-transcript.csv", csv: toCsv(["Event or provider", "Title", "Date", "CE hours", "Certificate ID", "Check link"], rows) };
