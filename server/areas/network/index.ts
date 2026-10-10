@@ -9,6 +9,7 @@ import { messagesRouter, unreadMessages } from "./messages";
 import { meetingsRouter } from "./meetings";
 import { communityRouter, seedCommunity } from "./community";
 import { exhibitorsRouter, vendorsRouter } from "./vendors";
+import { packagesRouter } from "./packages";
 import { leadsRouter, mapsRouter } from "./leads";
 import { pollsRouter } from "./polls";
 import { cfpSettingsFor, proposalsRouter } from "./proposals";
@@ -22,6 +23,7 @@ export const networkRouter = router({
   community: communityRouter,
   exhibitors: exhibitorsRouter,
   vendors: vendorsRouter,
+  packages: packagesRouter,
   leads: leadsRouter,
   maps: mapsRouter,
   polls: pollsRouter,

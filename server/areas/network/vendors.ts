@@ -8,8 +8,9 @@ import { audit, notFound, requireArea } from "../../_core/access";
 import { fileUrl } from "../../_core/files";
 import { emailLayout, escapeHtml, sendEmail } from "../../_core/email";
 import { userForEmail } from "../../core/auth";
-import { fmtMoney } from "@shared/format";
-import { attendeeCtx, id, isBlocked, requireFeature, slug } from "./common";
+import { fmtDate, fmtMoney, fullName } from "@shared/format";
+import type { LogoSpots, VendorBenefit } from "../../../drizzle/schema";
+import { attendeeCtx, csvCell, id, isBlocked, requireFeature, slug } from "./common";
 import { startThread } from "./messages";
 
 type Vendor = typeof schema.vendors.$inferSelect;
@@ -98,18 +99,37 @@ function staffNames(v: Vendor) {
 
 const isSponsor = (v: Vendor) => v.kind === "sponsor" || v.kind === "both";
 
-/** Sponsor levels first (biggest packages first), then exhibitors by name. */
-function directoryOrder(list: Vendor[]) {
-  return [...list].sort((a, b) => Number(isSponsor(b)) - Number(isSponsor(a)) || b.amountCents - a.amountCents || a.company.localeCompare(b.company));
+type Pkg = typeof schema.vendorPackages.$inferSelect;
+type VendorPayment = typeof schema.vendorPayments.$inferSelect;
+type Agreement = typeof schema.agreements.$inferSelect;
+
+const NO_SPOTS: LogoSpots = { welcome: false, topOfList: false, sessionPages: false };
+
+export function eventPackages(eventId: number) {
+  return getDb()
+    .select()
+    .from(schema.vendorPackages)
+    .where(eq(schema.vendorPackages.eventId, eventId))
+    .all()
+    .sort((a, b) => a.sort - b.sort || a.id - b.id);
 }
 
-function publicVendor(v: Vendor) {
+/** Sponsors first (by package order, then biggest amounts), then exhibitors by name. */
+function directoryOrder(list: Vendor[], packages: Map<number, Pkg>) {
+  const rank = (v: Vendor) => (v.packageId && packages.has(v.packageId) ? packages.get(v.packageId)!.sort : Number.MAX_SAFE_INTEGER);
+  return [...list].sort((a, b) => Number(isSponsor(b)) - Number(isSponsor(a)) || (isSponsor(a) ? rank(a) - rank(b) : 0) || b.amountCents - a.amountCents || a.company.localeCompare(b.company));
+}
+
+function publicVendor(v: Vendor, packages: Map<number, Pkg>) {
+  const pkg = v.packageId ? packages.get(v.packageId) : undefined;
   return {
     id: v.id,
     company: v.company,
     kind: v.kind,
     sponsor: isSponsor(v),
-    level: v.level,
+    level: pkg?.name || v.level,
+    /** Where the package puts the logo in the app. */
+    logoSpots: pkg?.logoSpots ?? NO_SPOTS,
     booth: v.booth,
     category: v.category,
     description: v.description,
@@ -118,6 +138,185 @@ function publicVendor(v: Vendor) {
     logoUrl: fileUrl(v.logoFileId),
     canMessage: vendorPeople(v).some((p) => p.visible),
   };
+}
+
+
+/* ---------- Sponsors and exhibitors: money, status, passes ---------- */
+
+/** "2026-10-10" plus n business days (bank payments clear in about five). */
+export function businessDaysAfter(iso: string, n: number) {
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y || !m || !d) return "";
+  const t = new Date(Date.UTC(y, m - 1, d));
+  let left = n;
+  while (left > 0) {
+    t.setUTCDate(t.getUTCDate() + 1);
+    const dow = t.getUTCDay();
+    if (dow !== 0 && dow !== 6) left--;
+  }
+  return t.toISOString().slice(0, 10);
+}
+
+export function addDays(iso: string, n: number) {
+  const [y, m, d] = iso.split("-").map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d + n));
+  return t.toISOString().slice(0, 10);
+}
+
+/** Paid, still clearing, and owed. Vendors from before payments were tracked use paidCents. */
+export function vendorMoney(v: Vendor, payments: VendorPayment[]) {
+  const paidCents = payments.length ? payments.filter((p) => p.status === "paid").reduce((n, p) => n + p.amountCents, 0) : v.paidCents;
+  const pendingCents = payments.filter((p) => p.status === "pending").reduce((n, p) => n + p.amountCents, 0);
+  return { paidCents, pendingCents, owedCents: Math.max(0, v.amountCents - paidCents - pendingCents) };
+}
+
+/** The agreement that counts for a vendor: the signed one, else the latest sent. */
+export function currentAgreement(list: Agreement[]) {
+  const live = list.filter((a) => a.status !== "void" && a.status !== "draft").sort((a, b) => b.id - a.id);
+  return live.find((a) => a.status === "signed") ?? live[0];
+}
+
+export type VendorStatus = { label: string; tone: "green" | "orange" | "gray" | "red"; note: string };
+
+/** The status shown on the list, worked out from payments, the agreement and the invoice hold. */
+export function vendorStatus(v: Vendor, payments: VendorPayment[], agreements: Agreement[]): VendorStatus {
+  const m = vendorMoney(v, payments);
+  const owed = m.paidCents < v.amountCents;
+  if (v.status === "cancelled") return { label: "Cancelled", tone: "red", note: "" };
+  const agr = currentAgreement(agreements);
+  if (agr && agr.status === "sent") return { label: "Not signed", tone: "orange", note: "Agreement sent, not signed yet" };
+  const pending = payments.filter((p) => p.status === "pending");
+  if (pending.length) {
+    const clears = pending.map((p) => businessDaysAfter(p.paidOn || new Date().toISOString().slice(0, 10), 5)).sort().at(-1)!;
+    return { label: "Payment pending", tone: "orange", note: `bank deposit clears about ${fmtDate(clears)}` };
+  }
+  if (!owed) return { label: "Paid", tone: "green", note: "" };
+  if (v.holdUntil) return { label: "Invoice sent", tone: "orange", note: `held until ${fmtDate(v.holdUntil)}` };
+  if (m.paidCents > 0 && v.nextChargeCents > 0 && v.nextChargeOn) return { label: "Deposit paid", tone: "green", note: `rest charged ${fmtDate(v.nextChargeOn)}` };
+  return { label: "Owed", tone: "orange", note: "" };
+}
+
+/** Passes a vendor has: the package's plus add-ons that add a pass. */
+export function passTotal(v: Vendor, pkg: Pkg | undefined, addons: Map<number, { addsPass: boolean }>) {
+  return (pkg?.passes ?? 0) + v.addons.reduce((n, l) => n + (addons.get(l.addonId)?.addsPass ? l.qty : 0), 0);
+}
+
+/** Pass holders: attendees linked to the vendor whose registration is not cancelled. */
+export function passHolders(eventId: number) {
+  return getDb()
+    .select()
+    .from(schema.attendees)
+    .where(eq(schema.attendees.eventId, eventId))
+    .all()
+    .filter((a) => a.vendorId && a.status !== "cancelled");
+}
+
+/** Every vendor with its package and pass counts (the Add attendee sheet uses it too). */
+export function vendorPassSummary(eventId: number) {
+  const db = getDb();
+  const vendors = db.select().from(schema.vendors).where(eq(schema.vendors.eventId, eventId)).all().filter((v) => v.status !== "cancelled");
+  const packages = new Map(eventPackages(eventId).map((p) => [p.id, p]));
+  const addons = new Map(db.select().from(schema.vendorAddons).where(eq(schema.vendorAddons.eventId, eventId)).all().map((a) => [a.id, a]));
+  const holders = passHolders(eventId);
+  return vendors
+    .sort((a, b) => a.company.localeCompare(b.company))
+    .map((v) => {
+      const pkg = v.packageId ? packages.get(v.packageId) : undefined;
+      return { id: v.id, company: v.company, kind: v.kind, packageName: pkg?.name || v.level, passTicketTypeId: pkg?.passTicketTypeId ?? null, passesTotal: passTotal(v, pkg, addons), passesUsed: holders.filter((a) => a.vendorId === v.id).length };
+    });
+}
+
+/** Benefits for a package, keeping the done state of ones the vendor already had. */
+export function benefitsFor(pkg: Pkg, current: VendorBenefit[]): VendorBenefit[] {
+  return pkg.benefits.map((label) => {
+    const had = current.find((b) => b.label.toLowerCase() === label.toLowerCase());
+    const status = had?.status ?? (had?.done ? "done" : "not_started");
+    return { label, status, done: status === "done" };
+  });
+}
+
+/** What the listing in the app shows ("Logo, about, website, booth offer"). */
+function appSummary(v: Vendor) {
+  if (!v.visible) return "Hidden from the app";
+  const parts = [v.logoFileId ? "logo" : "", v.description ? "about" : "", v.website ? "website" : "", v.offer ? "booth offer" : ""].filter(Boolean);
+  if (!parts.length) return "Name only";
+  const s = parts.join(", ");
+  return s[0].toUpperCase() + s.slice(1);
+}
+
+const METHOD_LABEL: Record<VendorPayment["method"], string> = { card: "Card", bank: "Bank account", check: "Check", cash: "Cash", invoice: "Invoice", other: "Other" };
+const PURPOSE_LABEL: Record<VendorPayment["purpose"], string> = { deposit: "deposit", balance: "balance", full: "payment", manual: "payment" };
+
+/** One payment line as the Payments section shows it. */
+function paymentLine(p: VendorPayment, names: Map<number, string>, label: string) {
+  const how =
+    p.method === "card" || p.method === "bank" ? p.reference || label || METHOD_LABEL[p.method]
+    : p.reference ? `${METHOD_LABEL[p.method]} ${p.reference}`
+    : METHOD_LABEL[p.method];
+  const by = p.recordedBy ? names.get(p.recordedBy) : "";
+  const state =
+    p.status === "pending" ? `Pending, clears about ${fmtDate(businessDaysAfter(p.paidOn || new Date().toISOString().slice(0, 10), 5))}`
+    : p.status === "failed" ? `Failed${p.failureReason ? `: ${p.failureReason}` : ""}`
+    : p.status === "refunded" ? "Refunded"
+    : by ? `Recorded by ${by}` : "";
+  return {
+    id: p.id,
+    amountCents: p.amountCents,
+    status: p.status,
+    method: p.method,
+    title: `${fmtMoney(p.amountCents, "$0.00")} ${PURPOSE_LABEL[p.purpose]}`,
+    detail: [how, fmtDate(p.paidOn), state, p.note].filter(Boolean).join(" · "),
+    /** Payments made through Stripe stay; staff can remove the ones they recorded. */
+    removable: !p.stripePaymentIntentId && !p.stripeSessionId,
+  };
+}
+
+/** Everything the Sponsors and exhibitors page shows for each vendor. */
+function adminVendorRows(eventId: number, rows: Vendor[]) {
+  const db = getDb();
+  const ids = rows.map((r) => r.id);
+  const packages = new Map(eventPackages(eventId).map((p) => [p.id, p]));
+  const addons = new Map(db.select().from(schema.vendorAddons).where(eq(schema.vendorAddons.eventId, eventId)).all().map((a) => [a.id, a]));
+  const payments = ids.length ? db.select().from(schema.vendorPayments).where(inArray(schema.vendorPayments.vendorId, ids)).all() : [];
+  const agreements = ids.length ? db.select().from(schema.agreements).where(inArray(schema.agreements.vendorId, ids)).all() : [];
+  const templates = new Map(db.select().from(schema.agreementTemplates).where(eq(schema.agreementTemplates.eventId, eventId)).all().map((t) => [t.id, t.name]));
+  const holders = passHolders(eventId);
+  const userIds = Array.from(new Set(payments.map((p) => p.recordedBy).filter((x): x is number => !!x)));
+  const names = new Map(userIds.length ? db.select().from(schema.users).where(inArray(schema.users.id, userIds)).all().map((u) => [u.id, u.name || u.email]) : []);
+  return rows.map((v) => {
+    const mine = payments.filter((p) => p.vendorId === v.id).sort((a, b) => (a.paidOn || "").localeCompare(b.paidOn || "") || a.id - b.id);
+    const agrs = agreements.filter((a) => a.vendorId === v.id);
+    const agr = currentAgreement(agrs);
+    const pkg = v.packageId ? packages.get(v.packageId) : undefined;
+    const people = holders.filter((a) => a.vendorId === v.id);
+    const money = vendorMoney(v, mine);
+    const status = vendorStatus(v, mine, agrs);
+    const remindOn = v.nextChargeReminderAt ? new Date(v.nextChargeReminderAt).toISOString().slice(0, 10) : v.nextChargeOn ? addDays(v.nextChargeOn, -7) : null;
+    return {
+      packageName: pkg?.name ?? "",
+      packageKind: pkg?.kind ?? null,
+      ...money,
+      statusLabel: status.label,
+      statusTone: status.tone,
+      statusNote: status.note,
+      agreement: agr
+        ? { code: agr.code, status: agr.status, signerName: agr.signerName, signedAt: agr.signedAt, templateName: (agr.templateId ? templates.get(agr.templateId) : "") || agr.title || "Agreement" }
+        : null,
+      payments: mine.map((p) => paymentLine(p, names, v.payMethodLabel)),
+      nextChargeRemindOn: remindOn,
+      passesTotal: passTotal(v, pkg, addons),
+      passesUsed: people.length,
+      passPeople: people.sort((a, b) => a.id - b.id).map((a) => ({ id: a.id, name: fullName(a), email: a.email, checkedIn: !!a.checkedInAt })),
+      appSummary: appSummary(v),
+    };
+  });
+}
+
+/** The thin number strip for a set of vendors. */
+function stripFor(list: { status: Vendor["status"]; amountCents: number; paidCents: number; pendingCents: number; owedCents: number; passesTotal: number; passesUsed: number }[]) {
+  const live = list.filter((v) => v.status !== "cancelled");
+  const sum = (f: (v: (typeof live)[number]) => number) => live.reduce((n, v) => n + f(v), 0);
+  return { soldCents: sum((v) => v.amountCents), paidCents: sum((v) => v.paidCents + v.pendingCents), owedCents: sum((v) => v.owedCents), passesUsed: sum((v) => v.passesUsed), passesTotal: sum((v) => v.passesTotal) };
 }
 
 const benefit = z.object({ label: z.string().trim().min(1).max(160), status: z.enum(["done", "not_started", "waiting"]) });
@@ -172,13 +371,13 @@ const adminRouter = router({
     const booths = new Set(maps.flatMap((m) => m.pins.filter((p) => p.kind === "booth").map((p) => p.label.replace(/^booth\s*/i, "").trim())));
     const taken = new Set(rows.filter((r) => r.status !== "cancelled" && r.booth).map((r) => r.booth));
     const active = rows.filter((r) => r.status !== "cancelled");
-    return {
-      vendors: rows
-        .sort((a, b) => a.company.localeCompare(b.company))
-        .map((v) => {
+    rows.sort((a, b) => a.company.localeCompare(b.company));
+    const extra = adminVendorRows(input.eventId, rows);
+    const vendors = rows.map((v, i) => {
           const contract = v.contractFileId ? files.get(v.contractFileId) : undefined;
           return {
             ...v,
+            ...extra[i],
             leads: counts.get(v.id) ?? 0,
             logoUrl: fileUrl(v.logoFileId),
             contractUrl: fileUrl(v.contractFileId),
@@ -187,7 +386,20 @@ const adminRouter = router({
             staffNames: staffNames(v),
             benefits: v.benefits.map((b) => ({ label: b.label, status: b.status ?? (b.done ? "done" : "not_started") })),
           };
-        }),
+        });
+    const packages = eventPackages(input.eventId);
+    const sold = (pid: number) => rows.filter((r) => r.packageId === pid && r.status !== "cancelled").length;
+    return {
+      vendors,
+      packages: packages.map((p) => ({ ...p, sold: sold(p.id) })),
+      counts: {
+        addons: db.select({ id: schema.vendorAddons.id }).from(schema.vendorAddons).where(eq(schema.vendorAddons.eventId, input.eventId)).all().length,
+        agreements: db.select({ id: schema.agreementTemplates.id }).from(schema.agreementTemplates).where(eq(schema.agreementTemplates.eventId, input.eventId)).all().length,
+      },
+      strips: {
+        sponsors: stripFor(vendors.filter((v) => v.kind !== "exhibitor")),
+        exhibitors: stripFor(vendors.filter((v) => v.kind !== "sponsor")),
+      },
       stats: {
         vendors: active.length,
         boothsOpen: Array.from(booths).filter((b) => !taken.has(b)).length,
@@ -199,10 +411,24 @@ const adminRouter = router({
   }),
 
   create: protectedProcedure
-    .input(z.object({ eventId: id, company: z.string().trim().min(1).max(160), kind: z.enum(["exhibitor", "sponsor", "both"]).default("exhibitor"), contactName: z.string().trim().max(120).default(""), email: z.string().trim().max(200).default("") }))
+    .input(
+      z.object({
+        eventId: id,
+        company: z.string().trim().min(1).max(160),
+        kind: z.enum(["exhibitor", "sponsor", "both"]).default("exhibitor"),
+        contactName: z.string().trim().max(120).default(""),
+        email: z.string().trim().max(200).default(""),
+        status: z.enum(VENDOR_STATUSES).default("lead"),
+        packageId: id.nullable().default(null),
+      })
+    )
     .mutation(({ ctx, input }) => {
       requireArea(ctx.user, input.eventId, "vendors", "edit");
-      const v = getDb().insert(schema.vendors).values(input).returning().get();
+      const { packageId, ...rest } = input;
+      const pkg = packageId ? eventPackages(input.eventId).find((p) => p.id === packageId) : undefined;
+      if (packageId && !pkg) throw notFound("That package");
+      const fromPackage = pkg ? { packageId: pkg.id, level: pkg.name, amountCents: pkg.priceCents, benefits: benefitsFor(pkg, []) } : {};
+      const v = getDb().insert(schema.vendors).values({ ...rest, email: rest.email.toLowerCase(), ...fromPackage }).returning().get();
       audit(ctx.user, { eventId: input.eventId, action: "vendor.create", detail: v.company });
       return v;
     }),
@@ -228,11 +454,95 @@ const adminRouter = router({
     return { ok: true };
   }),
 
+  /** Sponsor details on the Sponsors and exhibitors page. Choosing a package fills the price, level and benefits. */
+  saveDetails: protectedProcedure
+    .input(
+      z.object({
+        eventId: id,
+        vendorId: id,
+        company: z.string().trim().min(1).max(160),
+        kind: z.enum(["exhibitor", "sponsor", "both"]),
+        packageId: id.nullable(),
+        amountCents: z.number().int().min(0).max(100_000_000),
+        booth: z.string().trim().max(20),
+        contactName: z.string().trim().max(120),
+        email: z.string().trim().max(200).refine((s) => !s || z.string().email().safeParse(s).success, "Enter a valid email."),
+        phone: z.string().trim().max(40),
+        active: z.boolean(),
+        logoFileId: id.nullable(),
+        description: z.string().trim().max(2000),
+        website: z.string().trim().max(300),
+        category: z.string().trim().max(80),
+        offer: z.string().trim().max(300),
+        notes: z.string().trim().max(4000),
+        boothStaff: z.array(z.string().trim().email().max(200)).max(30),
+        visible: z.boolean(),
+        leadScanning: z.boolean(),
+      })
+    )
+    .mutation(({ ctx, input }) => {
+      const { event } = requireArea(ctx.user, input.eventId, "vendors", "edit");
+      const v = vendorIn(input.eventId, input.vendorId);
+      checkFile(input.logoFileId, event.orgId);
+      const db = getDb();
+      const pkg = input.packageId ? eventPackages(input.eventId).find((p) => p.id === input.packageId) : undefined;
+      if (input.packageId && !pkg) throw notFound("That package");
+      const { eventId: _e, vendorId: _v, active, email, boothStaff, packageId, ...rest } = input;
+      const changedPackage = packageId !== v.packageId;
+      const status: Vendor["status"] = !active ? "cancelled" : v.status === "confirmed" || v.status === "paid" ? v.status : "confirmed";
+      db.update(schema.vendors)
+        .set({
+          ...rest,
+          email: email.toLowerCase(),
+          status,
+          packageId,
+          boothStaff: Array.from(new Set(boothStaff.map((e) => e.toLowerCase()))),
+          ...(pkg ? { level: pkg.name } : {}),
+          ...(changedPackage && pkg ? { benefits: benefitsFor(pkg, v.benefits) } : {}),
+        })
+        .where(eq(schema.vendors.id, v.id))
+        .run();
+      syncBoothStaff(db.select().from(schema.vendors).where(eq(schema.vendors.id, v.id)).get()!);
+      audit(ctx.user, { orgId: event.orgId, eventId: input.eventId, action: "vendor.update", detail: input.company });
+      return { ok: true };
+    }),
+
+  /** The checkbox on a benefit: done or to do. */
+  setBenefit: protectedProcedure.input(z.object({ eventId: id, vendorId: id, index: z.number().int().min(0).max(100), done: z.boolean() })).mutation(({ ctx, input }) => {
+    requireArea(ctx.user, input.eventId, "vendors", "edit");
+    const v = vendorIn(input.eventId, input.vendorId);
+    if (!v.benefits[input.index]) throw notFound("That benefit");
+    const benefits = v.benefits.map((b, i) => (i === input.index ? { ...b, done: input.done, status: input.done ? ("done" as const) : ("not_started" as const) } : b));
+    getDb().update(schema.vendors).set({ benefits }).where(eq(schema.vendors.id, v.id)).run();
+    audit(ctx.user, { eventId: input.eventId, action: "vendor.benefit", detail: `${v.company}: ${v.benefits[input.index].label} ${input.done ? "done" : "to do"}` });
+    return { ok: true };
+  }),
+
+  /** The Sponsors or Exhibitors tab as a CSV file. */
+  exportCsv: protectedProcedure.input(z.object({ eventId: id, tab: z.enum(["sponsors", "exhibitors"]) })).query(({ ctx, input }) => {
+    const { event } = requireArea(ctx.user, input.eventId, "vendors", "view");
+    const rows = getDb()
+      .select()
+      .from(schema.vendors)
+      .where(eq(schema.vendors.eventId, input.eventId))
+      .all()
+      .filter((v) => (input.tab === "sponsors" ? isSponsor(v) : v.kind !== "sponsor"))
+      .sort((a, b) => a.company.localeCompare(b.company));
+    const extra = adminVendorRows(input.eventId, rows);
+    const head = ["Company", "Contact", "Email", "Phone", "Package", "Booth", "Price", "Paid", "Owed", "Passes used", "Passes", "Status"];
+    const lines = rows.map((v, i) => {
+      const x = extra[i];
+      return [v.company, v.contactName, v.email, v.phone, x.packageName || v.level, v.booth, (v.amountCents / 100).toFixed(2), ((x.paidCents + x.pendingCents) / 100).toFixed(2), (x.owedCents / 100).toFixed(2), x.passesUsed, x.passesTotal, x.statusLabel];
+    });
+    return { filename: `${event.slug}-${input.tab}.csv`, csv: [head, ...lines].map((r) => r.map(csvCell).join(",")).join("\n") };
+  }),
+
   remove: protectedProcedure.input(z.object({ eventId: id, vendorId: id })).mutation(({ ctx, input }) => {
     requireArea(ctx.user, input.eventId, "vendors", "edit");
     const v = vendorIn(input.eventId, input.vendorId);
     const db = getDb();
     db.delete(schema.staffAssignments).where(eq(schema.staffAssignments.vendorId, v.id)).run();
+    db.update(schema.attendees).set({ vendorId: null }).where(eq(schema.attendees.vendorId, v.id)).run();
     db.delete(schema.vendors).where(eq(schema.vendors.id, v.id)).run();
     audit(ctx.user, { eventId: input.eventId, action: "vendor.delete", detail: v.company });
     return { ok: true };
@@ -282,7 +592,8 @@ export const exhibitorsRouter = router({
       .where(and(eq(schema.vendors.eventId, event.id), eq(schema.vendors.visible, true)))
       .all()
       .filter((v) => LISTED.has(v.status));
-    return directoryOrder(rows).map(publicVendor);
+    const packages = new Map(eventPackages(event.id).map((p) => [p.id, p]));
+    return directoryOrder(rows, packages).map((v) => publicVendor(v, packages));
   }),
 
   get: protectedProcedure.input(z.object({ slug, vendorId: id })).query(({ ctx, input }) => {
@@ -290,7 +601,7 @@ export const exhibitorsRouter = router({
     requireFeature(event, "exhibitors", "Exhibitors");
     const v = vendorIn(event.id, input.vendorId);
     if (!v.visible || !LISTED.has(v.status)) throw notFound("That exhibitor");
-    return publicVendor(v);
+    return publicVendor(v, new Map(eventPackages(event.id).map((p) => [p.id, p])));
   }),
 
   /** Message an exhibitor: opens a conversation with their contact (or first booth staff member). */

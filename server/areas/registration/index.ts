@@ -148,6 +148,47 @@ function validatePurchase(slug: string, ticketId: number, buyer: Buyer | null, c
   return { ev, page, ticket, coupon, price };
 }
 
+/**
+ * The embedded Stripe Checkout Session for an order, on the organization's own
+ * account. The checkout page and payment links (/r/:slug/pay?order=) both use it.
+ */
+async function checkoutSession(ev: typeof schema.events.$inferSelect, order: typeof schema.orders.$inferSelect, opts: { accountId: string; label: string; ticketName: string; embed: string; idempotencyKey: string }) {
+  const session = await stripe().checkout.sessions.create(
+    {
+      ui_mode: "embedded_page",
+      mode: "payment",
+      // Dynamic payment methods: whatever the organization turned on in its Stripe dashboard
+      // (card, Apple Pay, Google Pay, Klarna, Afterpay) shows when the buyer is eligible.
+      ...(checkoutPageFor(ev.id).payOverTime ? {} : { excluded_payment_method_types: ["klarna", "afterpay_clearpay"] as Stripe.Checkout.SessionCreateParams.ExcludedPaymentMethodType[] }),
+      line_items: [
+        {
+          quantity: 1,
+          price_data: {
+            currency: "usd",
+            unit_amount: order.amountCents,
+            product_data: { name: `${ev.shortName || ev.name}: ${opts.label}` },
+          },
+        },
+      ],
+      customer_email: order.email,
+      client_reference_id: String(order.id),
+      metadata: { leaddash_order_id: String(order.id), leaddash_event_id: String(ev.id) },
+      payment_intent_data: {
+        ...(order.feeCents > 0 ? { application_fee_amount: order.feeCents } : {}),
+        receipt_email: order.email,
+        description: `${ev.name}: ${opts.ticketName}`,
+        metadata: { leaddash_order_id: String(order.id) },
+      },
+      expires_at: Math.floor(Date.now() / 1000) + 60 * 60,
+      return_url: `${ENV.appUrl}/r/${ev.slug}/done?session_id={CHECKOUT_SESSION_ID}${opts.embed}`,
+    },
+    { stripeAccount: opts.accountId, idempotencyKey: opts.idempotencyKey }
+  );
+  getDb().update(schema.orders).set({ stripeSessionId: session.id, stripeAccountId: opts.accountId }).where(eq(schema.orders.id, order.id)).run();
+  if (!session.client_secret) throw new Error("Stripe returned no client secret");
+  return session.client_secret;
+}
+
 const ticketRouter = router({
   list: protectedProcedure.input(eventIn).query(({ ctx, input }) => {
     requireArea(ctx.user, input.eventId, "registration", "view");
@@ -583,40 +624,8 @@ export const registrationRouter = router({
       }
       const row = accountRow(ev.orgId)!;
       try {
-        const session = await stripe().checkout.sessions.create(
-          {
-            ui_mode: "embedded_page",
-            mode: "payment",
-            // Dynamic payment methods: whatever the organization turned on in its Stripe dashboard
-            // (card, Apple Pay, Google Pay, Klarna, Afterpay) shows when the buyer is eligible.
-            ...(checkoutPageFor(ev.id).payOverTime ? {} : { excluded_payment_method_types: ["klarna", "afterpay_clearpay"] as Stripe.Checkout.SessionCreateParams.ExcludedPaymentMethodType[] }),
-            line_items: [
-              {
-                quantity: 1,
-                price_data: {
-                  currency: "usd",
-                  unit_amount: price.amountCents,
-                  product_data: { name: `${ev.shortName || ev.name}: ${ticket.name}${coupon ? ` (coupon ${coupon.code})` : ""}` },
-                },
-              },
-            ],
-            customer_email: email,
-            client_reference_id: String(order.id),
-            metadata: { leaddash_order_id: String(order.id), leaddash_event_id: String(ev.id) },
-            payment_intent_data: {
-              ...(fee > 0 ? { application_fee_amount: fee } : {}),
-              receipt_email: email,
-              description: `${ev.name}: ${ticket.name}`,
-              metadata: { leaddash_order_id: String(order.id) },
-            },
-            expires_at: Math.floor(Date.now() / 1000) + 60 * 60,
-            return_url: `${ENV.appUrl}/r/${ev.slug}/done?session_id={CHECKOUT_SESSION_ID}${embed}`,
-          },
-          { stripeAccount: row.accountId, idempotencyKey: `leaddash-order-${order.id}` }
-        );
-        db.update(schema.orders).set({ stripeSessionId: session.id }).where(eq(schema.orders.id, order.id)).run();
-        if (!session.client_secret) throw new Error("Stripe returned no client secret");
-        return { kind: "paid" as const, clientSecret: session.client_secret };
+        const clientSecret = await checkoutSession(ev, order, { accountId: row.accountId, label: `${ticket.name}${coupon ? ` (coupon ${coupon.code})` : ""}`, ticketName: ticket.name, embed, idempotencyKey: `leaddash-order-${order.id}` });
+        return { kind: "paid" as const, clientSecret };
       } catch (err) {
         db.update(schema.orders).set({ status: "failed" }).where(eq(schema.orders.id, order.id)).run();
         console.error("[stripe] checkout session failed:", err);
@@ -650,6 +659,46 @@ export const registrationRouter = router({
       const status = order.status === "paid" || order.status === "free" ? "registered" : order.status === "pending" ? "processing" : order.status;
       return { status, paid: order.status === "paid" || order.status === "refunded", firstName: b.firstName ?? "", email: order.email, showConfirmation: page.showConfirmation, sendWelcome: page.sendWelcome };
     }),
+
+  /** A payment link staff sent (/r/:slug/pay?order=): starts Stripe Checkout for that pending order. */
+  payOrder: publicProcedure.input(slugIn.extend({ order: z.string().min(8).max(60) })).mutation(async ({ input }) => {
+    const ev = getEventBySlug(input.slug);
+    const db = getDb();
+    let order = db.select().from(schema.orders).where(eq(schema.orders.doneToken, input.order)).get();
+    if (!order || order.eventId !== ev.id || order.method !== "link") throw notFound("That payment link");
+    const ticket = db.select().from(schema.ticketTypes).where(eq(schema.ticketTypes.id, order.ticketTypeId)).get();
+    const summary = { ticketName: ticket?.name ?? "Ticket", amountCents: order.amountCents, email: order.email, firstName: String((order.buyer as Partial<Buyer>).firstName ?? "") };
+    const doneUrl = `/r/${ev.slug}/done?order=${order.doneToken}`;
+    if (order.status === "paid" || order.status === "free") return { kind: "done" as const, doneUrl, ...summary };
+    if (order.status === "refunded") throw bad("This registration was refunded. Contact the event team.");
+    const pay = paymentsFor(ev.orgId);
+    if (!pay.ready || !pay.accountId) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "This event is not taking payments yet. Please try again later." });
+    // A session already started for this link: finish it if it was paid, reuse it while it is open.
+    if (order.stripeSessionId && order.stripeAccountId && order.status === "pending") {
+      try {
+        const s = await stripe().checkout.sessions.retrieve(order.stripeSessionId, {}, { stripeAccount: order.stripeAccountId });
+        if (s.status === "complete" && (s.payment_status === "paid" || s.payment_status === "no_payment_required")) {
+          await fulfillOrder(order.id, { paymentIntentId: typeof s.payment_intent === "string" ? s.payment_intent : s.payment_intent?.id });
+          return { kind: "done" as const, doneUrl, ...summary };
+        }
+        if (s.status === "complete") return { kind: "done" as const, doneUrl, ...summary };
+        if (s.status === "open" && s.client_secret) return { kind: "pay" as const, clientSecret: s.client_secret, ...summary };
+      } catch (err) {
+        console.error("[stripe] could not check the earlier session:", err);
+      }
+    }
+    if (order.status !== "pending") db.update(schema.orders).set({ status: "pending" }).where(eq(schema.orders.id, order.id)).run();
+    const fee = platformFee(order.amountCents);
+    db.update(schema.orders).set({ feeCents: fee }).where(eq(schema.orders.id, order.id)).run();
+    order = db.select().from(schema.orders).where(eq(schema.orders.id, order.id)).get()!;
+    try {
+      const clientSecret = await checkoutSession(ev, order, { accountId: pay.accountId, label: summary.ticketName, ticketName: summary.ticketName, embed: "", idempotencyKey: `leaddash-order-${order.id}-link-${Date.now()}` });
+      return { kind: "pay" as const, clientSecret, ...summary };
+    } catch (err) {
+      console.error("[stripe] payment link session failed:", err);
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "We could not start the payment. Please try again." });
+    }
+  }),
 });
 
 export const registrationArea: AreaModule<typeof registrationRouter> = {

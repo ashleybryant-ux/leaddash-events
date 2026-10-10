@@ -6,6 +6,8 @@ import { useMemo, useRef, useState } from "react";
 import { trpc, type RouterOutputs } from "../../lib/trpc";
 import { AdminPage, useAdmin, useAdminEvent } from "../../shells/AdminShell";
 import { Empty, ErrorNote, ExpandRow, Field, FolderTabs, KV, Modal, PageLoading, Pill, THead, confirmAction } from "../../ui/components";
+import { AddAttendeeSheet } from "../network/AddAttendeeSheet";
+import { NumStrip } from "../network/sponsor-ui";
 import { IconSearch } from "../../ui/icons";
 import { errorText, toast } from "../../ui/toast";
 import { fmtDate, fmtTime, fmtWhenTime } from "@shared/format";
@@ -14,10 +16,32 @@ import { usePrintBadge } from "./CheckInDesk";
 
 type Row = RouterOutputs["ce"]["attendees"]["list"][number];
 type Kind = Row["kind"];
-type Tab = "all" | "in" | "out" | "evals" | "speakers" | "vendors";
+type Tab = "all" | "in" | "out" | "unpaid" | "speakers" | "vendors" | "evals";
 
-const KIND_LABEL: Record<Kind, string> = { attendee: "Attendee", speaker: "Speaker", vendor: "Exhibitor", staff: "Staff", guest: "Walk-in", volunteer: "Volunteer", sponsor: "Sponsor guest" };
-const COLS = "minmax(0, 1.6fr) minmax(0, 1.2fr) 170px 90px 90px 96px";
+const KIND_LABEL: Record<Kind, string> = { attendee: "Attendee", speaker: "Speaker", vendor: "Exhibitor staff", staff: "Staff", guest: "Guest", volunteer: "Volunteer", sponsor: "Sponsor guest" };
+const COLS = "minmax(0, 1.5fr) minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 1.1fr) 150px 70px 60px 96px";
+const METHOD_WORD: Record<string, string> = { check: "check", cash: "cash", invoice: "invoice", other: "other" };
+
+/** The Payment pill: how the person's ticket was paid. */
+function PaymentPill({ p }: { p: Row["payment"] }) {
+  if (!p) return <span className="muted">None</span>;
+  switch (p.kind) {
+    case "online":
+      return <Pill>Paid online</Pill>;
+    case "outside":
+      return <Pill>{p.method === "other" ? "Paid outside the app" : `Paid by ${METHOD_WORD[p.method] ?? p.method}`}</Pill>;
+    case "sponsor_pass":
+      return <Pill tone="gray">Sponsor pass</Pill>;
+    case "comp":
+      return <Pill tone="gray">Complimentary</Pill>;
+    case "free":
+      return <Pill tone="gray">No charge</Pill>;
+    case "unpaid":
+      return <Pill tone="orange">Unpaid, link sent</Pill>;
+    case "refunded":
+      return <Pill tone="red">Refunded</Pill>;
+  }
+}
 
 const hours = (h: number) => (Number.isInteger(h) ? h.toFixed(1) : String(h));
 
@@ -35,8 +59,6 @@ type Draft = {
   ticketTypeId: number | null;
   kind: Kind;
 };
-
-const blankDraft: Draft = { firstName: "", lastName: "", email: "", credentials: "", phone: "", city: "", organization: "", jobTitle: "", licenseNumber: "", licenseState: "", ticketTypeId: null, kind: "attendee" };
 
 const toDraft = (r: Row): Draft => ({
   firstName: r.firstName,
@@ -135,9 +157,10 @@ export function AdminAttendees() {
     all: () => true,
     in: (r) => active(r) && !!r.checkedInAt,
     out: (r) => active(r) && !r.checkedInAt,
-    evals: (r) => active(r) && r.evaluationsDue > 0,
+    unpaid: (r) => active(r) && r.payment?.kind === "unpaid",
     speakers: (r) => r.kind === "speaker",
-    vendors: (r) => r.kind === "vendor",
+    vendors: (r) => r.kind === "vendor" || r.kind === "sponsor" || !!r.vendorId,
+    evals: (r) => active(r) && r.evaluationsDue > 0,
   };
   const count = (t: Tab) => searched.filter(filters[t]).length;
   const shown = searched.filter(filters[tab]);
@@ -145,10 +168,12 @@ export function AdminAttendees() {
     { key: "all", label: `All (${count("all")})` },
     { key: "in", label: `Checked in (${count("in")})` },
     { key: "out", label: `Not checked in (${count("out")})` },
-    { key: "evals", label: `Evaluations due (${count("evals")})` },
+    { key: "unpaid", label: `Unpaid (${count("unpaid")})` },
     { key: "speakers", label: `Speakers (${count("speakers")})` },
-    { key: "vendors", label: `Vendors (${count("vendors")})` },
+    { key: "vendors", label: `Sponsors and exhibitors (${count("vendors")})` },
+    { key: "evals", label: `Evaluations due (${count("evals")})` },
   ];
+  const stat = (f: (r: Row) => boolean) => rows.filter(f).length;
 
   return (
     <AdminPage
@@ -184,6 +209,16 @@ export function AdminAttendees() {
         </>
       }
     >
+      {list.data ? (
+        <NumStrip
+          items={[
+            { label: "Registered", value: stat((r) => r.status === "registered") },
+            { label: "Checked in", value: stat((r) => active(r) && !!r.checkedInAt) },
+            { label: "Unpaid", value: stat(filters.unpaid), warn: stat(filters.unpaid) > 0 },
+            { label: "Sponsor passes", value: stat((r) => active(r) && r.payment?.kind === "sponsor_pass") },
+          ]}
+        />
+      ) : null}
       <label style={{ height: 44, maxWidth: 520, borderRadius: 10, border: "1px solid #D5DEDA", background: "#FFFFFF", color: "var(--muted)", display: "flex", alignItems: "center", gap: 8, padding: "0 12px" }}>
         <IconSearch />
         <input aria-label="Search attendees" placeholder="Search by name or email" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 0, border: "none", outline: "none", fontSize: 14, color: "var(--ink)", background: "#FFFFFF" }} />
@@ -197,8 +232,8 @@ export function AdminAttendees() {
           ) : list.error ? (
             <ErrorNote error={list.error} />
           ) : (
-            <div className="table-inner" style={{ minWidth: 900 }}>
-              <THead cols={COLS} labels={["Attendee", "Ticket", "Checked in", "Sessions", "CE", ""]} />
+            <div className="table-inner" style={{ minWidth: 1040 }}>
+              <THead cols={COLS} labels={["Name", "Type", "Ticket", "Payment", "Check-in", "Sessions", "CE", ""]} />
               {!shown.length ? (
                 <Empty>{rows.length ? "No one matches." : "No attendees yet."}</Empty>
               ) : (
@@ -209,11 +244,13 @@ export function AdminAttendees() {
                     open={open === r.id}
                     onToggle={() => setOpen(open === r.id ? null : r.id)}
                     cells={[
-                      <span className="col gap-4">
-                        <span className="strong clip">{r.name}</span>
-                        {r.status === "cancelled" ? <Pill tone="red">Cancelled</Pill> : r.kind !== "attendee" ? <span className="small muted">{KIND_LABEL[r.kind]}</span> : null}
+                      <span className="col" style={{ gap: 0, minWidth: 0, alignItems: "flex-start" }}>
+                        <span className="strong clip" style={{ maxWidth: "100%" }}>{r.name}</span>
+                        {r.status === "cancelled" ? <Pill tone="red">Cancelled</Pill> : <span className="small muted clip" style={{ maxWidth: "100%" }}>{r.email}</span>}
                       </span>,
+                      <span className="clip">{KIND_LABEL[r.kind]}</span>,
                       <span className="clip">{r.ticket || <span className="muted">No ticket</span>}</span>,
+                      <PaymentPill p={r.payment} />,
                       r.checkedInAt ? <span>{fmtWhenTime(r.checkedInAt)}</span> : <span className="muted">Not yet</span>,
                       <span>{r.sessions}</span>,
                       <span>{hours(r.ceHours)}</span>,
@@ -228,7 +265,7 @@ export function AdminAttendees() {
         </div>
       </div>
 
-      <AddModal open={adding} onClose={() => setAdding(false)} tickets={tickets.data ?? []} />
+      <AddAttendeeSheet open={adding} onClose={() => setAdding(false)} />
       <ImportModal open={importing} onClose={() => setImporting(false)} />
     </AdminPage>
   );
@@ -412,41 +449,6 @@ function SessionCheckins({ row }: { row: Row }) {
         </div>
       ) : null}
     </div>
-  );
-}
-
-function AddModal({ open, onClose, tickets }: { open: boolean; onClose: () => void; tickets: { id: number; name: string }[] }) {
-  const ev = useAdminEvent();
-  const utils = trpc.useUtils();
-  const add = trpc.ce.attendees.add.useMutation();
-  const [d, setD] = useState<Draft>(blankDraft);
-  return (
-    <Modal open={open} onClose={onClose} title="Add attendee">
-      <DetailFields d={d} setD={setD} tickets={tickets} />
-      <p className="small muted" style={{ margin: 0 }}>No payment is taken.</p>
-      <div className="row gap-10">
-        <button
-          className="btn btn-sm btn-solid btn-w"
-          disabled={add.isPending}
-          onClick={async () => {
-            try {
-              await add.mutateAsync({ eventId: ev.id, ...d });
-              toast(`${d.firstName} ${d.lastName} added`);
-              setD(blankDraft);
-              await utils.ce.attendees.list.invalidate();
-              onClose();
-            } catch (err) {
-              toast(errorText(err), true);
-            }
-          }}
-        >
-          Add
-        </button>
-        <button className="btn btn-sm btn-w" onClick={onClose}>
-          Cancel
-        </button>
-      </div>
-    </Modal>
   );
 }
 

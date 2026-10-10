@@ -455,6 +455,62 @@ function PaymentStep({ slug, data, draft, embed, footer }: { slug: string; data:
 /* ---------- /r/:slug/pay ---------- */
 
 export function PayScreen({ slug }: { slug: string }) {
+  const order = new URLSearchParams(useSearch()).get("order");
+  return order ? <PayLinkScreen slug={slug} order={order} /> : <PayDraftScreen slug={slug} />;
+}
+
+/** /r/:slug/pay?order=: a payment link staff emailed for a ticket they added. */
+function PayLinkScreen({ slug, order }: { slug: string; order: string }) {
+  const q = usePage(slug);
+  const [, navigate] = useLocation();
+  const start = trpc.registration.payOrder.useMutation();
+  const asked = useRef(false);
+  useEffect(() => {
+    if (asked.current) return;
+    asked.current = true;
+    start.mutateAsync({ slug, order }).then((r) => r.kind === "done" && navigate(r.doneUrl, { replace: true })).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug, order]);
+  if (q.isLoading) return <PageLoading />;
+  if (q.error) return <div className="app"><ErrorNote error={q.error} /></div>;
+  const d = q.data!;
+  const r = start.data;
+  return (
+    <PublicFrame data={d}>
+      <main className="app-body" style={{ paddingTop: 18 }}>
+        <h1 className="h2">{d.event.shortName}</h1>
+        {r ? (
+          <div className="card" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, fontSize: 14, borderRadius: 12 }}>
+            <div className="row-between" style={{ fontWeight: 800 }}>
+              <span>{r.ticketName}</span>
+              <span>{fmtMoney(r.amountCents)}</span>
+            </div>
+            <span className="small muted">{r.email}</span>
+          </div>
+        ) : null}
+        {start.error ? (
+          <div className="err" role="alert">{errorText(start.error)}</div>
+        ) : r?.kind === "pay" && d.payments.publishableKey && d.payments.accountId ? (
+          <div style={{ borderRadius: 12, overflow: "hidden", background: "#FFFFFF", border: "1px solid var(--line)" }}>
+            <EmbeddedCheckoutProvider key={r.clientSecret} stripe={stripeFor(d.payments.publishableKey, d.payments.accountId)} options={{ clientSecret: r.clientSecret }}>
+              <EmbeddedCheckout />
+            </EmbeddedCheckoutProvider>
+          </div>
+        ) : (
+          <div className="center" style={{ padding: 24 }}>
+            <Spinner />
+          </div>
+        )}
+        <div className="row gap-6 small muted">
+          <IconLock />
+          Payment processed by Stripe for {d.payments.businessName || d.event.orgName}
+        </div>
+      </main>
+    </PublicFrame>
+  );
+}
+
+function PayDraftScreen({ slug }: { slug: string }) {
   const q = usePage(slug);
   const [, navigate] = useLocation();
   const draft = loadDraft(slug);

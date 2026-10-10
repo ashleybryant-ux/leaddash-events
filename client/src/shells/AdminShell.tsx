@@ -104,6 +104,7 @@ export function eventGroups(eventId: number): NavGroup[] {
     ] },
     { key: "tickets", label: "Tickets and sales", icon: <IconTicket />, items: [
       { label: "Tickets", href: `${b}/registration?tab=tickets`, area: "registration" },
+      { label: "Sponsors and exhibitors", href: `${b}/vendors`, area: "vendors", feature: "exhibitors" },
       { label: "Sales and payments", href: `${b}/registration?tab=payments`, area: "registration" },
       { label: "Checkout page", href: `${b}/registration?tab=checkout`, area: "registration" },
       { label: "Welcome email", href: `${b}/registration?tab=welcome`, area: "registration" },
@@ -120,7 +121,6 @@ export function eventGroups(eventId: number): NavGroup[] {
     { key: "app", label: "In the app", icon: <IconPhone />, items: [
       { label: "Announcements", href: `${b}/announcements`, area: "announcements" },
       { label: "Community", href: `${b}/community`, area: "community", feature: "community" },
-      { label: "Vendors", href: `${b}/vendors`, area: "vendors", feature: "exhibitors" },
       { label: "Help", href: `${b}/help`, area: "help" },
       { label: "Dining", href: `${b}/dining`, adminOnly: true, feature: "dining" },
       { label: "About host", href: `${b}/host`, adminOnly: true },
