@@ -1,7 +1,7 @@
 /**
- * The admin frame: a slim icon menu (Event, Events, Payments, Reports, Members,
- * Settings), breadcrumbs and Find a page across the top, and on event screens
- * an Event home button with the other pages in the same group.
+ * The admin frame: a dark sidebar with Find a page, the event card (name, dates,
+ * switch events), Event home and the event's groups (only the group in use is
+ * open), then the organization's pages. Breadcrumbs run across the top.
  *
  * Event screens live at /admin/e/:eventId/<section>; organization screens at
  * /admin/<section>. Screens use useAdmin() for the organization, the event and
@@ -11,7 +11,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { Link, useLocation, useSearch } from "wouter";
 import { trpc, type RouterOutputs } from "../lib/trpc";
 import { ErrorNote, PageLoading } from "../ui/components";
-import { IconAward, IconBack, IconCalendar, IconChart, IconGear, IconHome, IconLeaf, IconMenu, IconMoney, IconPeople, IconPhone, IconSearch, IconSignOut, IconStar, IconTicket, IconTools } from "../ui/icons";
+import { IconAward, IconCalendar, IconChart, IconChevron, IconFolder, IconGear, IconHome, IconLeaf, IconMenu, IconMoney, IconPeople, IconPhone, IconSearch, IconSignOut, IconStar, IconTicket, IconTools } from "../ui/icons";
 import { SignIn } from "../core/SignIn";
 import { fmtDates } from "@shared/format";
 
@@ -163,10 +163,11 @@ function orgPages(memberHub: boolean): (NavItem & { icon: ReactNode; short: stri
 }
 
 const LAST_EVENT_KEY = "ld-events-last-event";
-const readLastEvent = () => {
+type LastEvent = { id: number; name: string; dates: string };
+const readLastEvent = (): LastEvent | null => {
   try {
-    const v = localStorage.getItem(LAST_EVENT_KEY);
-    return v ? Number(v) : null;
+    const v = JSON.parse(localStorage.getItem(LAST_EVENT_KEY) || "null");
+    return v && typeof v.id === "number" ? v : null;
   } catch {
     return null;
   }
@@ -176,54 +177,66 @@ const readLastEvent = () => {
 function useIsHere() {
   const [location] = useLocation();
   const search = useSearch();
-  return (href: string, exact = false) => {
+  return (href: string) => {
     const [path, query] = href.split("?");
     if (query) {
       const want = new URLSearchParams(query).get("tab");
       const tab = new URLSearchParams(search).get("tab") ?? "tickets";
       return location === path && tab === want;
     }
-    if (exact || path === "/admin") return location === path;
+    if (path === "/admin" || /^\/admin\/e\/\d+$/.test(path)) return location === path;
     return location === path || location.startsWith(`${path}/`);
   };
 }
 
-/** Find a page: type part of a page's name and pick it. */
-function FindPage({ pages }: { pages: { label: string; where: string; href: string }[] }) {
-  const [, navigate] = useLocation();
-  const [q, setQ] = useState("");
+/** The event card at the top of the menu: name and dates, and a list to switch events. */
+function EventSwitcher({ current, orgId, canList, onPick }: { current: LastEvent; orgId: number | null; canList: boolean; onPick: () => void }) {
   const [open, setOpen] = useState(false);
-  const hits = q.trim() ? pages.filter((p) => `${p.label} ${p.where}`.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 8) : [];
-  const go = (href: string) => {
-    setQ("");
-    setOpen(false);
-    navigate(href);
-  };
+  const [, navigate] = useLocation();
+  const events = trpc.core.events.list.useQuery({ orgId: orgId ?? 0 }, { enabled: canList && open && !!orgId });
   return (
-    <div className="find-page" onBlur={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setOpen(false)}>
-      <IconSearch />
-      <input
-        aria-label="Find a page"
-        placeholder="Find a page"
-        value={q}
-        onChange={(e) => {
-          setQ(e.target.value);
-          setOpen(true);
-        }}
-        onFocus={() => setOpen(true)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && hits[0]) go(hits[0].href);
-          if (e.key === "Escape") setOpen(false);
-        }}
-      />
-      {open && hits.length ? (
-        <div className="find-hits" role="listbox">
-          {hits.map((h) => (
-            <button key={h.href} type="button" role="option" aria-selected={false} onClick={() => go(h.href)}>
-              <span className="strong">{h.label}</span>
-              <span className="small muted">{h.where}</span>
+    <div className="side-event" onBlur={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setOpen(false)}>
+      <button type="button" className="side-event-btn" aria-haspopup="true" aria-expanded={open} onClick={() => (canList ? setOpen(!open) : navigate(`/admin/e/${current.id}`))}>
+        <span className="grow" style={{ minWidth: 0 }}>
+          <span className="side-event-name">{current.name}</span>
+          <span className="side-event-dates">{current.dates}</span>
+        </span>
+        <IconChevron size={16} style={{ transform: open ? "rotate(90deg)" : undefined, transition: "transform 0.15s", flexShrink: 0 }} />
+      </button>
+      {open ? (
+        <div className="side-event-menu" role="menu">
+          {(events.data ?? []).map((e) => (
+            <button
+              key={e.id}
+              type="button"
+              role="menuitem"
+              className={e.id === current.id ? "on" : ""}
+              onClick={() => {
+                setOpen(false);
+                onPick();
+                navigate(`/admin/e/${e.id}`);
+              }}
+            >
+              <span className="strong">{e.name}</span>
+              <span className="small muted">
+                {fmtDates(e.startDate, e.endDate)}
+                {e.status === "draft" ? " · Draft" : e.status === "ended" ? " · Ended" : ""}
+              </span>
             </button>
           ))}
+          {events.isLoading ? <span className="small muted" style={{ padding: 8 }}>Loading</span> : null}
+          <button
+            type="button"
+            role="menuitem"
+            className="all"
+            onClick={() => {
+              setOpen(false);
+              onPick();
+              navigate("/admin");
+            }}
+          >
+            All events
+          </button>
         </div>
       ) : null}
     </div>
@@ -236,9 +249,11 @@ export function AdminPage({ title: givenTitle, sub: givenSub, actions, children,
   let title = givenTitle;
   let subtitle = givenSub;
   const { event, me, orgId } = useAdmin();
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
   const isHere = useIsHere();
   const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
   const orgs = me.orgs;
   const allOrgs = trpc.core.org.all.useQuery(undefined, { enabled: me.isLeadDashStaff });
   const orgRow = (me.isLeadDashStaff ? allOrgs.data?.find((o) => o.id === orgId) : undefined) ?? orgs.find((o) => o.id === orgId);
@@ -246,27 +261,28 @@ export function AdminPage({ title: givenTitle, sub: givenSub, actions, children,
   const memberHub = orgRow ? orgRow.memberHub !== false : true;
   const isOrgAdmin = !!orgId && (orgs.some((o) => o.id === orgId) || me.isLeadDashStaff);
 
-  // Keep the last event opened so the Event button stays in the menu on organization pages.
+  // Remember the last event opened so the menu can offer it on organization pages too.
+  const current: LastEvent | null = event ? { id: event.id, name: event.name, dates: fmtDates(event.startDate, event.endDate) } : readLastEvent();
   useEffect(() => {
     if (!event) return;
     try {
-      localStorage.setItem(LAST_EVENT_KEY, String(event.id));
+      localStorage.setItem(LAST_EVENT_KEY, JSON.stringify({ id: event.id, name: event.name, dates: fmtDates(event.startDate, event.endDate) }));
     } catch {
       /* private window */
     }
   }, [event]);
-  const lastEventId = event?.id ?? readLastEvent();
 
   const org = isOrgAdmin ? orgPages(memberHub) : [];
   const groups = event ? visibleGroups(event) : [];
-  const eventHome = event ? `/admin/e/${event.id}` : lastEventId ? `/admin/e/${lastEventId}` : null;
-  const onEventPage = location.startsWith("/admin/e/");
-
-  // Where am I: the group and page for event screens, the page for organization screens.
   const group = groups.find((g) => g.items.some((i) => isHere(i.href)));
   const page = group?.items.find((i) => isHere(i.href));
   const orgPage = org.find((p) => isHere(p.href) || p.related?.some((r) => isHere(r.href)));
   const related = orgPage?.related?.find((r) => isHere(r.href));
+
+  // The group you are working in stays open; click another group to open it instead.
+  useEffect(() => {
+    setOpenGroup(group?.key ?? null);
+  }, [group?.key]);
 
   // Older event screens use the event's name as their title; the page's own name reads better.
   if (event && page && title === event.name) {
@@ -291,38 +307,104 @@ export function AdminPage({ title: givenTitle, sub: givenSub, actions, children,
     crumbs.push({ label: related && related.href !== orgPage.href ? related.label : orgPage.label });
   } else if (typeof title === "string") crumbs.push({ label: title });
 
-  const findPages = [
-    ...groups.flatMap((g) => g.items.map((i) => ({ label: i.label, where: `${event!.name} · ${g.label}`, href: i.href }))),
-    ...(event ? [{ label: "Event home", where: event.name, href: `/admin/e/${event.id}` }] : []),
-    ...org.flatMap((p) => (p.related ?? [p]).map((r) => ({ label: r.label, where: orgName || "Organization", href: r.href }))),
-    ...(me.isLeadDashStaff ? [{ label: "LeadDash tools", where: "LeadDash staff", href: "/admin/leaddash" }] : []),
-  ];
-
-  const rail: { key: string; label: string; href: string; icon: ReactNode; on: boolean }[] = [
-    ...(eventHome ? [{ key: "event", label: "Event", href: eventHome, icon: <IconCalendar />, on: onEventPage }] : []),
-    ...org.map((p) => ({ key: p.href, label: p.short, href: p.href, icon: p.icon, on: !onEventPage && p === orgPage })),
-    ...(me.isLeadDashStaff ? [{ key: "staff", label: "LeadDash", href: "/admin/leaddash", icon: <IconTools />, on: isHere("/admin/leaddash") }] : []),
-  ];
+  // Find a page: typing filters the menu and opens the groups that match.
+  const needle = q.trim().toLowerCase();
+  const match = (label: string, extra = "") => !needle || `${label} ${extra}`.toLowerCase().includes(needle);
+  const shownGroups = groups.map((g) => ({ ...g, items: g.items.filter((i) => match(i.label, g.label)) })).filter((g) => g.items.length);
+  const orgLinks = org.flatMap((p) => (p.related ? p.related.map((r, i) => ({ ...r, icon: i === 0 ? p.icon : <IconFolder />, label: r.label })) : [{ ...p }])).filter((p) => match(p.label));
+  const firstHit = shownGroups[0]?.items[0]?.href ?? orgLinks[0]?.href;
+  const clear = () => {
+    setQ("");
+    setOpen(false);
+  };
+  const go = (href: string) => {
+    clear();
+    navigate(href);
+  };
 
   return (
     <div className="admin">
-      <aside className={`admin-rail${open ? " open" : ""}`} aria-label="Main">
-        <Link href={isOrgAdmin ? "/admin" : eventHome ?? "/admin"} className="rail-logo" aria-label="LeadDash Events home">
+      <aside className={`admin-aside${open ? " open" : ""}`} aria-label="Main">
+        <Link href={isOrgAdmin ? "/admin" : current ? `/admin/e/${current.id}` : "/admin"} className="wordmark" onClick={() => setOpen(false)}>
           <IconLeaf />
-          <span className="rail-word">
+          <span className="wordmark-text">
             <b>LEADDASH</b>
             <span>EVENTS</span>
           </span>
         </Link>
-        <nav>
-          {rail.map((r) => (
-            <Link key={r.key} href={r.href} aria-current={r.on ? "page" : undefined} onClick={() => setOpen(false)}>
-              {r.icon}
-              <span>{r.label}</span>
+        <label className="side-search">
+          <IconSearch />
+          <input
+            aria-label="Find a page"
+            placeholder="Find a page"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && firstHit) go(firstHit);
+              if (e.key === "Escape") setQ("");
+            }}
+          />
+        </label>
+
+        {current && !needle ? <EventSwitcher current={current} orgId={orgId} canList={isOrgAdmin} onPick={() => setOpen(false)} /> : null}
+        {event ? (
+          <nav aria-label="This event" className="side-nav">
+            {match("Event home") ? (
+              <Link href={`/admin/e/${event.id}`} className="side-link" aria-current={location === `/admin/e/${event.id}` ? "page" : undefined} onClick={() => setOpen(false)}>
+                <IconHome />
+                Event home
+              </Link>
+            ) : null}
+            {shownGroups.map((g) => {
+              const expanded = !!needle || openGroup === g.key;
+              return (
+                <div key={g.key} className={`side-group${expanded ? " open" : ""}`}>
+                  <button type="button" className="side-link" aria-expanded={expanded} onClick={() => setOpenGroup(expanded && !needle ? null : g.key)}>
+                    {g.icon}
+                    <span className="grow">{g.label}</span>
+                    <IconChevron size={16} className="side-chev" />
+                  </button>
+                  {expanded ? (
+                    <div className="side-kids">
+                      {g.items.map((i) => (
+                        <Link key={i.href} href={i.href} aria-current={isHere(i.href) ? "page" : undefined} onClick={clear}>
+                          {i.label}
+                        </Link>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </nav>
+        ) : null}
+
+        {orgLinks.length ? (
+          <nav aria-label="Organization" className="side-nav">
+            <span className="nav-label">{orgName || "Organization"}</span>
+            {orgLinks.map((p) => (
+              <Link key={p.href} href={p.href} className="side-link" aria-current={isHere(p.href) ? "page" : undefined} onClick={clear}>
+                {p.icon}
+                {p.label}
+              </Link>
+            ))}
+          </nav>
+        ) : null}
+
+        {me.isLeadDashStaff && match("LeadDash tools") ? (
+          <nav aria-label="LeadDash staff" className="side-nav">
+            <span className="nav-label">LeadDash staff</span>
+            <Link href="/admin/leaddash" className="side-link" aria-current={isHere("/admin/leaddash") ? "page" : undefined} onClick={clear}>
+              <IconTools />
+              LeadDash tools
             </Link>
-          ))}
-        </nav>
-        <SignOut />
+          </nav>
+        ) : null}
+        {needle && !firstHit && !match("LeadDash tools") ? <span className="small" style={{ color: "var(--side-muted)", padding: "0 12px" }}>No page matches.</span> : null}
+
+        <div style={{ marginTop: "auto" }}>
+          <SignOut />
+        </div>
       </aside>
       <main className="admin-main">
         <div className="admin-top">
@@ -337,7 +419,6 @@ export function AdminPage({ title: givenTitle, sub: givenSub, actions, children,
               </span>
             ))}
           </nav>
-          <FindPage pages={findPages} />
         </div>
         <div className="row wrap" style={{ alignItems: "flex-end", justifyContent: "space-between", gap: 12 }}>
           <div className="col" style={{ gap: 2 }}>
@@ -346,28 +427,6 @@ export function AdminPage({ title: givenTitle, sub: givenSub, actions, children,
           </div>
           {actions ? <div className="row wrap gap-10">{actions}</div> : null}
         </div>
-        {event && group ? (
-          <div className="row wrap gap-8">
-            <Link className="btn btn-sm" href={`/admin/e/${event.id}`}>
-              <IconBack size={16} /> Event home
-            </Link>
-            <span className="page-tabs" role="navigation" aria-label={group.label}>
-              {group.items.map((i) => (
-                <Link key={i.href} href={i.href} aria-current={isHere(i.href) ? "page" : undefined}>
-                  {i.label}
-                </Link>
-              ))}
-            </span>
-          </div>
-        ) : orgPage?.related ? (
-          <span className="page-tabs" role="navigation" aria-label={orgPage.label}>
-            {orgPage.related.map((r) => (
-              <Link key={r.href} href={r.href} aria-current={isHere(r.href) ? "page" : undefined}>
-                {r.label}
-              </Link>
-            ))}
-          </span>
-        ) : null}
         {banner}
         {children}
       </main>
@@ -391,9 +450,9 @@ function SignOut() {
     },
   });
   return (
-    <button type="button" className="rail-signout" onClick={() => signOut.mutate()}>
+    <button type="button" className="side-link" onClick={() => signOut.mutate()}>
       <IconSignOut />
-      <span>Sign out</span>
+      Sign out
     </button>
   );
 }

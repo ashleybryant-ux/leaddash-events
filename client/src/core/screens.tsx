@@ -2,8 +2,8 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { trpc } from "../lib/trpc";
-import { AdminPage, useAdmin, useAdminEvent, visibleGroups } from "../shells/AdminShell";
-import { EditSection, Empty, ErrorNote, Field, KV, Modal, PageLoading, Pill, UploadButton, confirmAction } from "../ui/components";
+import { AdminPage, useAdmin, useAdminEvent } from "../shells/AdminShell";
+import { EditSection, Empty, ErrorNote, Field, KV, Kpi, Modal, PageLoading, Pill, UploadButton, confirmAction } from "../ui/components";
 import { errorText, toast } from "../ui/toast";
 import { fmtDates, fmtMoney } from "@shared/format";
 import { SignIn } from "./SignIn";
@@ -454,79 +454,46 @@ export function LeadDashToolsScreen() {
   );
 }
 
-/** /admin/e/:id: the event home. What is left to set up, then a tile for each part of the event. */
+/** /admin/e/:id: the event home. Four numbers, then what is left to set up. Every page is in the menu. */
 export function EventHomeScreen() {
   const ev = useAdminEvent();
-  const { me, orgId } = useAdmin();
-  const [, navigate] = useLocation();
   const home = trpc.core.events.home.useQuery({ eventId: ev.id });
-  const isOrgAdmin = !!orgId && (me.orgs.some((o) => o.id === orgId) || me.isLeadDashStaff);
-  const events = trpc.core.events.list.useQuery({ orgId: orgId ?? 0 }, { enabled: isOrgAdmin });
-  const groups = visibleGroups(ev);
   const c = home.data?.counts;
-  const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
-  // One number per tile, so the home stays calm. The group's other pages are one click away on each page.
-  const stat: Record<string, { value: string; label: string }> = c
-    ? {
-        program: { value: String(c.sessions), label: c.sessions === 1 ? "session" : "sessions" },
-        tickets: c.sales !== null ? { value: fmtMoney(c.sales, "$0.00"), label: "in sales" } : { value: String(c.registered), label: "registered" },
-        people: { value: String(c.registered), label: "registered" },
-        ce: { value: String(c.issued), label: c.issued === 1 ? "certificate issued" : "certificates issued" },
-        app: { value: String(c.sent), label: c.sent === 1 ? "announcement sent" : "announcements sent" },
-        setup: { value: ev.status === "live" ? "Live" : ev.status === "ended" ? "Ended" : "Draft", label: "app status" },
-      }
-    : {};
+  const today = new Date().toISOString().slice(0, 10);
+  const daysTo = Math.round((Date.parse(`${ev.startDate}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86400_000);
+  const when = daysTo > 0 ? { label: "Days to go", value: String(daysTo) } : today <= ev.endDate ? { label: "Event", value: "Today" } : { label: "Event", value: "Ended" };
   const steps = home.data?.steps ?? [];
   const left = steps.filter((x) => !x.done).length;
   return (
-    <AdminPage
-      title={ev.name}
-      sub={`${fmtDates(ev.startDate, ev.endDate)}${ev.venueName ? ` · ${ev.venueName}` : ""}`}
-      actions={
-        isOrgAdmin && (events.data?.length ?? 0) > 1 ? (
-          <select className="select" aria-label="Switch event" style={{ height: 40, minWidth: 220 }} value="" onChange={(e) => e.target.value && navigate(`/admin/e/${e.target.value}`)}>
-            <option value="">Switch event</option>
-            {events.data!.filter((x) => x.id !== ev.id).map((x) => (
-              <option key={x.id} value={x.id}>
-                {x.name} ({fmtDates(x.startDate, x.endDate)})
-              </option>
-            ))}
-          </select>
-        ) : null
-      }
-    >
+    <AdminPage title={ev.name} sub={`${fmtDates(ev.startDate, ev.endDate)}${ev.venueName ? ` · ${ev.venueName}` : ""}`}>
       {home.error ? <ErrorNote error={home.error} /> : null}
+      <div className="home-kpis">
+        <Kpi label="Registered" value={c ? c.registered : ""} />
+        {c?.sales !== null ? <Kpi label="Sales" value={c ? fmtMoney(c.sales, "$0.00") : ""} /> : null}
+        <Kpi label="Sessions" value={c ? c.sessions : ""} />
+        <Kpi label={when.label} value={when.value} />
+      </div>
       {steps.length && left ? (
         <div className="card card-pad col gap-8">
           <div className="row-between">
             <span className="h3">Getting ready</span>
-            <span className="small muted strong">{steps.length - left} of {steps.length} done</span>
+            <span className="small muted strong">
+              {steps.length - left} of {steps.length} done
+            </span>
           </div>
-          {steps.filter((x) => !x.done).map((x) => (
-            <div key={x.key} className={`step${x.done ? " done" : ""}`}>
-              <span className="step-dot">{x.done ? <IconCheck size={14} /> : null}</span>
-              <span className="step-label grow">{x.label}</span>
-              {!x.done ? (
+          {steps
+            .filter((x) => !x.done)
+            .map((x) => (
+              <div key={x.key} className="step">
+                <span className="step-dot" />
+                <span className="step-label grow">{x.label}</span>
                 <Link className="btn btn-sm btn-w" href={x.href}>
                   Open
                 </Link>
-              ) : null}
-            </div>
-          ))}
+              </div>
+            ))}
         </div>
       ) : null}
-      <div className="home-tiles">
-        {groups.map((g) => (
-          <Link key={g.key} href={g.items[0].href} className="home-tile" aria-label={`${g.label}: ${stat[g.key]?.value ?? ""} ${stat[g.key]?.label ?? ""}`}>
-            <span className="row gap-10">
-              <span className="tile-icon">{g.icon}</span>
-              <span className="h3" style={{ fontSize: 16 }}>{g.label}</span>
-            </span>
-            <span className="tile-number">{stat[g.key]?.value ?? ""}</span>
-            <span className="small muted">{stat[g.key]?.label ?? ""}</span>
-          </Link>
-        ))}
-      </div>
     </AdminPage>
   );
 }
