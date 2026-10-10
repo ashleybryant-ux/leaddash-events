@@ -13,6 +13,7 @@ import { sendText } from "../../_core/platform";
 import { fmtDates, fmtMoney, fmtDate, fmtTime } from "@shared/format";
 import { zonedToDate } from "@shared/time";
 import type { MessageKind } from "../../../drizzle/schema";
+import { RECIPIENT_KINDS, defaultRecipientTemplates } from "./recipientDefaults";
 
 type Event = typeof schema.events.$inferSelect;
 type Template = typeof schema.messageTemplates.$inferSelect;
@@ -99,6 +100,24 @@ export function seedTemplates(eventId: number) {
   const org = db.select().from(schema.organizations).where(eq(schema.organizations.id, ev.orgId)).get()!;
   for (const t of defaultTemplates(ev, org.name)) {
     db.insert(schema.messageTemplates).values({ ...t, eventId }).onConflictDoNothing().run();
+  }
+  seedRecipientTemplates(eventId);
+}
+
+/** Attendee messages (the speaker, sponsor and exhibitor ones live in recipientMessages.ts). */
+export const isAttendeeKind = (kind: MessageKind) => !RECIPIENT_KINDS.has(kind);
+
+/** Adds any missing speaker, sponsor and exhibitor messages (new events, and older events the first time they are read). */
+export function seedRecipientTemplates(eventId: number) {
+  const db = getDb();
+  const ev = db.select().from(schema.events).where(eq(schema.events.id, eventId)).get();
+  if (!ev) return;
+  const org = db.select().from(schema.organizations).where(eq(schema.organizations.id, ev.orgId)).get()!;
+  for (const t of defaultRecipientTemplates(ev, org.name)) {
+    db.insert(schema.messageTemplates)
+      .values({ ...t, eventId, includes: { receipt: false, getApp: false, qr: false, calendar: false, hotel: false, ...t.includes } })
+      .onConflictDoNothing()
+      .run();
   }
 }
 
@@ -323,7 +342,12 @@ export async function runFollowUps(now = new Date()) {
   const db = getDb();
   const events = db.select().from(schema.events).where(ne(schema.events.status, "ended")).all();
   for (const ev of events) {
-    const templates = db.select().from(schema.messageTemplates).where(and(eq(schema.messageTemplates.eventId, ev.id), eq(schema.messageTemplates.enabled, true))).all();
+    const templates = db
+      .select()
+      .from(schema.messageTemplates)
+      .where(and(eq(schema.messageTemplates.eventId, ev.id), eq(schema.messageTemplates.enabled, true)))
+      .all()
+      .filter((t) => isAttendeeKind(t.kind));
     if (!templates.length) continue;
     const page = db.select().from(schema.checkoutPages).where(eq(schema.checkoutPages.eventId, ev.id)).get();
     const attendees = db

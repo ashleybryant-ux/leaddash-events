@@ -409,7 +409,7 @@ export const agreementsRouter = router({
   sendWelcome: protectedProcedure.input(z.object({ eventId: id, speakerId: id })).mutation(async ({ ctx, input }) => {
     const { event } = requireArea(ctx.user, input.eventId, "speakers", "edit");
     speakerIn(event.id, input.speakerId);
-    await sendSpeakerWelcome(input.speakerId);
+    await sendSpeakerWelcome(input.speakerId, { force: true });
     return { ok: true };
   }),
 });

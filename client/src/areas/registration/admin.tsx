@@ -11,6 +11,8 @@ import { IconCard } from "../../ui/icons";
 import { errorText, toast } from "../../ui/toast";
 import { fmtDate, fmtDates, fmtMoney, fmtTime, fmtWhen, slugify } from "@shared/format";
 import { centsToInput, parseMoney, StepNumber, useDebounced, type Question } from "./shared";
+import { WelcomeTabBody, WelcomeTabsBar } from "./welcomeTabs";
+import { CheckoutForBody, CheckoutForTabs } from "./vendorCheckoutAdmin";
 
 type AdminEvent = ReturnType<typeof useAdminEvent>;
 type StripeStatus = RouterOutputs["registration"]["stripe"]["status"];
@@ -22,7 +24,7 @@ type Payment = RouterOutputs["registration"]["payments"]["list"][number] & { eve
 const TABS = [
   { key: "tickets", label: "Tickets" },
   { key: "checkout", label: "Checkout page" },
-  { key: "welcome", label: "Welcome email" },
+  { key: "welcome", label: "Welcome emails" },
   { key: "payments", label: "Sales and payments" },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
@@ -88,10 +90,12 @@ export function RegistrationScreen() {
       banner={<StripeBar status={status.data} onSettings={tab === "payments" ? undefined : () => go("payments")} />}
     >
       <div className="col" style={{ gap: 0 }}>
+        {tab === "welcome" ? <WelcomeTabsBar event={event} /> : null}
+        {tab === "checkout" ? <CheckoutForTabs /> : null}
         <div className="folder-body">
           {tab === "tickets" ? <TicketsTab event={event} canEdit={canEdit} /> : null}
-          {tab === "checkout" ? <CheckoutTab event={event} canEdit={canEdit} /> : null}
-          {tab === "welcome" ? <WelcomeTab event={event} canEdit={canEdit} /> : null}
+          {tab === "checkout" ? <CheckoutForBody canEdit={canEdit} attendees={<CheckoutTab event={event} canEdit={canEdit} />} /> : null}
+          {tab === "welcome" ? <WelcomeTabBody event={event} attendees={<WelcomeTab event={event} canEdit={canEdit} />} /> : null}
           {tab === "payments" ? (
             status.isLoading ? (
               <PageLoading />

@@ -117,7 +117,8 @@ export function saveAccountStatus(a: Stripe.Account, bankLast4?: string) {
       bankLast4: last4 || row.bankLast4,
       payoutInterval: a.settings?.payouts?.schedule?.interval ?? row.payoutInterval,
       statementDescriptor: a.settings?.payments?.statement_descriptor || row.statementDescriptor,
-      payMethods: { card: cap(caps.card_payments), klarna: cap(caps.klarna_payments), afterpay: cap(caps.afterpay_clearpay_payments) },
+      // "ach" (bank account payments for sponsors and exhibitors) rides in the same json column.
+      payMethods: { card: cap(caps.card_payments), klarna: cap(caps.klarna_payments), afterpay: cap(caps.afterpay_clearpay_payments), ach: cap(caps.us_bank_account_ach_payments) } as typeof row.payMethods,
       connectedAt: row.connectedAt ?? new Date(),
       updatedAt: new Date(),
     })

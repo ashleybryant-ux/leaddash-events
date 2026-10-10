@@ -205,6 +205,8 @@ export const vendors = sqliteTable(
     payMethodLabel: text("pay_method_label").notNull().default(""),
     /** Invoice choice on the checkout page: the package is held until this date. */
     holdUntil: text("hold_until"),
+    /** Secret in the vendor's pay link (/r/:slug/sponsor/pay?v=): pay what is owed or change the saved payment method. */
+    payToken: text("pay_token").unique(),
     createdAt: createdAt(),
   },
   (t) => [index("vendors_event").on(t.eventId)]

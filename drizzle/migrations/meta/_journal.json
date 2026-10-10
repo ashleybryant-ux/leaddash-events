@@ -43,6 +43,13 @@
       "when": 1791672788502,
       "tag": "0005_agreement_welcome_after_sign",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1791674635583,
+      "tag": "0006_vendor_pay_token",
+      "breakpoints": true
     }
   ]
 }

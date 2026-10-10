@@ -11,6 +11,7 @@ import { audit, notFound, requireArea } from "../../_core/access";
 import { fmtMoney } from "@shared/format";
 import { id, isoDate } from "./common";
 import { eventPackages, vendorIn, vendorMoney } from "./vendors";
+import { sendVendorWelcome } from "../registration/recipientMessages";
 
 const bad = (message: string) => new TRPCError({ code: "BAD_REQUEST", message });
 const cents = z.number().int().min(0).max(100_000_000);
@@ -198,7 +199,7 @@ export const packagesRouter = router({
         note: z.string().trim().max(200).default(""),
       })
     )
-    .mutation(({ ctx, input }) => {
+    .mutation(async ({ ctx, input }) => {
       const { event } = requireArea(ctx.user, input.eventId, "vendors", "edit");
       const v = vendorIn(input.eventId, input.vendorId);
       keepEarlierPaid(v);
@@ -210,6 +211,12 @@ export const packagesRouter = router({
       syncPaid(v.id);
       trimNextCharge(v.id);
       audit(ctx.user, { orgId: event.orgId, eventId: input.eventId, action: "vendor.payment", detail: `${v.company}: ${fmtMoney(input.amountCents)} ${input.method}` });
+      // A payment recorded by staff can be what the welcome email was waiting for (it checks its own rule and sends once).
+      try {
+        await sendVendorWelcome(v.id);
+      } catch (err) {
+        console.error("[vendors] welcome after payment failed:", err);
+      }
       return { ok: true };
     }),
 

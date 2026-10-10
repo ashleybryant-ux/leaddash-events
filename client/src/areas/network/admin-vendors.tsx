@@ -17,6 +17,7 @@ import { VendorAgreementLine } from "../agreements/VendorAgreementBits";
 import { AddAttendeeSheet, type AddPreset } from "./AddAttendeeSheet";
 import { AddonsTab, PackagesTab, includesSentence } from "./admin-packages";
 import { PaymentsSection, type VendorRow } from "./vendor-payments";
+import { ChargeNowButton, PayLinkButtons } from "../registration/vendorCheckoutAdmin";
 import { NumStrip, SpSection, companyInitials, plural } from "./sponsor-ui";
 
 type ListData = RouterOutputs["network"]["vendors"]["list"];
@@ -451,7 +452,7 @@ function VendorList({ data, side, vendorId, onAddPerson }: { data: ListData; sid
           >
             <div className="sp-expand">
               <DetailsSection key={`d-${v.id}`} v={v} side={side} packages={data.packages} />
-              <PaymentsSection key={`p-${v.id}`} v={v} />
+              <PaymentsSection key={`p-${v.id}`} v={v} nextChargeActions={<ChargeNowButton v={v} />} extraActions={v.owedCents > 0 ? <PayLinkButtons v={v} /> : undefined} />
               <PassesSection v={v} side={side} onAdd={() => onAddPerson({ kind: side === "sponsors" ? "sponsor" : "vendor", vendorId: v.id })} />
               <BenefitsSection v={v} />
             </div>

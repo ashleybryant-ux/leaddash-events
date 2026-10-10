@@ -13,7 +13,7 @@ import { emailButton, emailLayout, escapeHtml, sendEmail, type EmailAttachment }
 import { fmtWhen } from "@shared/format";
 import type { Agreement, AgreementTemplate, AgreementValues } from "../../../drizzle/schema";
 import { eventMailStyle } from "../program/util";
-import { sendSpeakerWelcome } from "../registration/recipientMessages";
+import { sendSpeakerWelcome, sendVendorWelcome } from "../registration/recipientMessages";
 import { fillAgreement, sessionWhen, speakerSession, valuesFor } from "./fill";
 import { agreementPdf } from "./pdf";
 import type { AgreementKind } from "./templates";
@@ -335,6 +335,14 @@ export async function signAgreement(
       await sendSpeakerWelcome(signed.speakerId);
     } catch (err) {
       console.error("[agreements] speaker welcome failed:", err);
+    }
+  }
+  // Sponsors and exhibitors who sign from an emailed link: the welcome goes out once they have also paid (the welcome checks).
+  if (signed.kind !== "speaker" && signed.vendorId) {
+    try {
+      await sendVendorWelcome(signed.vendorId);
+    } catch (err) {
+      console.error("[agreements] vendor welcome failed:", err);
     }
   }
   return signed;

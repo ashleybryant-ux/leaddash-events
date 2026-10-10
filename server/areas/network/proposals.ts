@@ -19,6 +19,8 @@ import { randomToken } from "../../_core/crypto";
 import { fmtDate, fmtTime } from "@shared/format";
 import { activeRoles, hhmm, id, isoDate, slug } from "./common";
 import { sendSpeakerAgreement, templateFor } from "../agreements/sign";
+import { templateFor as messageTemplateFor } from "../registration/messages";
+import { sendSpeakerWelcome } from "../registration/recipientMessages";
 
 type Proposal = typeof schema.proposals.$inferSelect;
 type Assignment = typeof schema.reviewAssignments.$inferSelect;
@@ -348,6 +350,16 @@ const adminRouter = router({
             if (a && a.status !== "signed") agreementsSent++;
           } catch (err) {
             console.error("[proposals] agreement send failed:", err);
+          }
+        }
+      }
+      if (input.decision === "accepted" && sessionId && messageTemplateFor(event.id, "speaker_welcome")?.sendRule === "after_accept") {
+        // The speaker welcome is set to go when a proposal is accepted.
+        for (const { speakerId } of db.select({ speakerId: schema.sessionSpeakers.speakerId }).from(schema.sessionSpeakers).where(eq(schema.sessionSpeakers.sessionId, sessionId)).all()) {
+          try {
+            await sendSpeakerWelcome(speakerId);
+          } catch (err) {
+            console.error("[proposals] speaker welcome failed:", err);
           }
         }
       }

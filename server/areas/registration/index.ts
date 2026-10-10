@@ -33,9 +33,13 @@ import {
   ticketsOnSale,
   type Buyer,
 } from "./logic";
-import { KIND_LABELS, coverFor, describeRule, renderEmail, renderText, runFollowUps, sampleCtx, seedTemplates, templateFor } from "./messages";
+import { KIND_LABELS, coverFor, describeRule, isAttendeeKind, renderEmail, renderText, runFollowUps, sampleCtx, seedTemplates, templateFor } from "./messages";
+import { runRecipientFollowUps } from "./recipientMessages";
+import { welcomeRouter } from "./welcomeRouter";
 import { accountRow, accountView, connectReady, connectUrl, disconnectAccount, refreshAccount } from "./connect";
 import { registerHttp, registerRawHttp } from "./http";
+import { vendorCheckoutRouter } from "./vendorCheckout";
+import { runVendorCharges } from "./vendorCharges";
 
 const bad = (message: string) => new TRPCError({ code: "BAD_REQUEST", message });
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -355,7 +359,7 @@ const templateRouter = router({
   list: protectedProcedure.input(eventIn).query(({ ctx, input }) => {
     requireArea(ctx.user, input.eventId, "registration", "view");
     const rows = getDb().select().from(schema.messageTemplates).where(eq(schema.messageTemplates.eventId, input.eventId)).all();
-    return MESSAGE_KINDS.map((k) => rows.find((r) => r.kind === k))
+    return MESSAGE_KINDS.filter(isAttendeeKind).map((k) => rows.find((r) => r.kind === k))
       .filter((r): r is NonNullable<typeof r> => !!r)
       .map((r) => ({ ...r, label: KIND_LABELS[r.kind], ruleLabel: describeRule(r.sendRule, r.onlyIfNoApp) }));
   }),
@@ -363,7 +367,7 @@ const templateRouter = router({
   save: protectedProcedure.input(eventIn.merge(draftIn)).mutation(({ ctx, input }) => {
     const { event } = requireArea(ctx.user, input.eventId, "registration", "edit");
     const t = templateFor(input.eventId, input.kind);
-    if (!t) throw notFound("That message");
+    if (!t || !isAttendeeKind(t.kind)) throw notFound("That message");
     if (t.channel === "text" && input.body.length > 480) throw bad("Keep texts under 480 characters.");
     if (!input.body.trim()) throw bad("Write the message.");
     if (t.channel === "email" && !input.subject.trim()) throw bad("Add a subject.");
@@ -536,8 +540,10 @@ export const registrationRouter = router({
   coupons: couponRouter,
   checkout: checkoutRouter,
   templates: templateRouter,
+  welcomes: welcomeRouter,
   stripe: stripeRouter,
   payments: paymentRouter,
+  vendorCheckout: vendorCheckoutRouter,
 
   /** KPIs on the Tickets tab. */
   summary: protectedProcedure.input(eventIn).query(({ ctx, input }) => {
@@ -725,7 +731,11 @@ export const registrationArea: AreaModule<typeof registrationRouter> = {
       .where(and(eq(schema.checkoutPages.eventId, eventId), eq(schema.checkoutPages.platformTag, "")))
       .run();
   },
-  jobs: [{ name: "registration follow-ups", run: () => runFollowUps() }],
+  jobs: [
+    { name: "registration follow-ups", run: () => runFollowUps() },
+    { name: "speaker, sponsor and exhibitor follow-ups", run: async () => void (await runRecipientFollowUps()) },
+    { name: "sponsor and exhibitor scheduled charges", run: async () => void (await runVendorCharges()) },
+  ],
   registerHttp,
   registerRawHttp,
 };

@@ -10,6 +10,7 @@ import { webhookVerifier, type Stripe } from "./stripe";
 import { fulfillOrder, markRefunded } from "./logic";
 import { calendarFile, qrPng } from "./messages";
 import { finishConnect, saveAccountStatus } from "./connect";
+import { handleVendorStripeEvent } from "./vendorCheckout";
 import { userFromCookie } from "../../_core/context";
 
 const idOf = (v: string | { id: string } | null | undefined) => (typeof v === "string" ? v : v?.id ?? null);
@@ -23,6 +24,9 @@ export async function handleStripeEvent(event: Stripe.Event) {
     // Only trust events from the account the order was created on.
     return o && o.stripeAccountId === account ? o : undefined;
   };
+  // Sponsor and exhibitor payments (checkout pages, pay links, scheduled charges, returned bank payments).
+  const vendor = await handleVendorStripeEvent(event);
+  if (vendor) return vendor;
   switch (event.type) {
     case "checkout.session.completed":
     case "checkout.session.async_payment_succeeded": {

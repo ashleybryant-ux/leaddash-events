@@ -107,7 +107,7 @@ export function eventGroups(eventId: number): NavGroup[] {
       { label: "Sponsors and exhibitors", href: `${b}/vendors`, area: "vendors", feature: "exhibitors" },
       { label: "Sales and payments", href: `${b}/registration?tab=payments`, area: "registration" },
       { label: "Checkout page", href: `${b}/registration?tab=checkout`, area: "registration" },
-      { label: "Welcome email", href: `${b}/registration?tab=welcome`, area: "registration" },
+      { label: "Welcome emails", href: `${b}/registration?tab=welcome`, area: "registration" },
     ] },
     { key: "people", label: "People", icon: <IconPeople />, items: [
       { label: "Attendees", href: `${b}/attendees`, area: "attendees" },
