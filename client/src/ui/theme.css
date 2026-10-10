@@ -210,11 +210,10 @@ h1, h2, h3 { margin: 0; }
 .home-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 @media (max-width: 1100px) { .home-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) { .home-tiles { grid-template-columns: 1fr; } }
-.home-tile { background: #FFFFFF; border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
-.home-tile .tile-icon { width: 40px; height: 40px; }
-.home-tile .links { display: flex; flex-wrap: wrap; gap: 6px; }
-.home-tile .links a { height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--brand-tint-2); color: var(--ink); font-size: 13px; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; }
-.home-tile .links a:hover { border-color: var(--brand); color: var(--brand); }
+.home-tile { background: #FFFFFF; border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 6px; text-decoration: none; color: var(--ink); }
+.home-tile:hover { border-color: var(--brand); box-shadow: 0 4px 14px rgba(15, 42, 35, 0.08); }
+.home-tile .tile-icon { width: 40px; height: 40px; margin-bottom: 4px; }
+.tile-number { font-size: 26px; font-weight: 800; line-height: 1.1; margin-top: 6px; }
 .step { display: flex; align-items: center; gap: 10px; font-size: 14px; min-height: 34px; }
 .step-dot { width: 22px; height: 22px; border-radius: 11px; border: 2px solid #C9D5D0; display: flex; align-items: center; justify-content: center; color: #FFFFFF; flex-shrink: 0; }
 .step.done .step-dot { background: var(--brand); border-color: var(--brand); }

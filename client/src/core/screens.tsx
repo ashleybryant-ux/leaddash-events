@@ -465,14 +465,15 @@ export function EventHomeScreen() {
   const groups = visibleGroups(ev);
   const c = home.data?.counts;
   const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
-  const stat: Record<string, string> = c
+  // One number per tile, so the home stays calm. The group's other pages are one click away on each page.
+  const stat: Record<string, { value: string; label: string }> = c
     ? {
-        program: [plural(c.sessions, "session"), plural(c.speakers, "speaker"), c.toReview ? `${plural(c.toReview, "proposal")} to review` : ""].filter(Boolean).join(" · "),
-        tickets: [plural(c.registered, "person", "people") + " registered", c.sales !== null ? `${fmtMoney(c.sales, "$0.00")} in sales` : ""].filter(Boolean).join(" · "),
-        people: [plural(c.registered, "attendee"), plural(c.staff, "staff member")].join(" · "),
-        ce: [plural(c.evaluations, "evaluation"), `${plural(c.issued, "certificate")} issued`].join(" · "),
-        app: `${plural(c.sent, "announcement")} sent`,
-        setup: ev.status === "live" ? "The app is open to attendees" : ev.status === "ended" ? "The event has ended" : "The app is not open to attendees yet",
+        program: { value: String(c.sessions), label: c.sessions === 1 ? "session" : "sessions" },
+        tickets: c.sales !== null ? { value: fmtMoney(c.sales, "$0.00"), label: "in sales" } : { value: String(c.registered), label: "registered" },
+        people: { value: String(c.registered), label: "registered" },
+        ce: { value: String(c.issued), label: c.issued === 1 ? "certificate issued" : "certificates issued" },
+        app: { value: String(c.sent), label: c.sent === 1 ? "announcement sent" : "announcements sent" },
+        setup: { value: ev.status === "live" ? "Live" : ev.status === "ended" ? "Ended" : "Draft", label: "app status" },
       }
     : {};
   const steps = home.data?.steps ?? [];
@@ -497,8 +498,11 @@ export function EventHomeScreen() {
       {home.error ? <ErrorNote error={home.error} /> : null}
       {steps.length && left ? (
         <div className="card card-pad col gap-8">
-          <span className="h3">Getting ready</span>
-          {steps.map((x) => (
+          <div className="row-between">
+            <span className="h3">Getting ready</span>
+            <span className="small muted strong">{steps.length - left} of {steps.length} done</span>
+          </div>
+          {steps.filter((x) => !x.done).map((x) => (
             <div key={x.key} className={`step${x.done ? " done" : ""}`}>
               <span className="step-dot">{x.done ? <IconCheck size={14} /> : null}</span>
               <span className="step-label grow">{x.label}</span>
@@ -513,20 +517,14 @@ export function EventHomeScreen() {
       ) : null}
       <div className="home-tiles">
         {groups.map((g) => (
-          <div key={g.key} className="home-tile">
-            <div className="row gap-10">
+          <Link key={g.key} href={g.items[0].href} className="home-tile" aria-label={`${g.label}: ${stat[g.key]?.value ?? ""} ${stat[g.key]?.label ?? ""}`}>
+            <span className="row gap-10">
               <span className="tile-icon">{g.icon}</span>
               <span className="h3" style={{ fontSize: 16 }}>{g.label}</span>
-            </div>
-            <span className="small muted" style={{ fontSize: 13, minHeight: 18 }}>{stat[g.key] ?? ""}</span>
-            <div className="links">
-              {g.items.map((i) => (
-                <Link key={i.href} href={i.href}>
-                  {i.label}
-                </Link>
-              ))}
-            </div>
-          </div>
+            </span>
+            <span className="tile-number">{stat[g.key]?.value ?? ""}</span>
+            <span className="small muted">{stat[g.key]?.label ?? ""}</span>
+          </Link>
         ))}
       </div>
     </AdminPage>
