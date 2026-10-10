@@ -269,7 +269,7 @@ function NewOrgModal({ open, onClose, onCreated }: { open: boolean; onClose: () 
   );
 }
 
-/** /admin/settings: organization details, admin team, and (LeadDash staff) the platform connection. */
+/** /admin/settings: organization details and the admin team. Organizations see exactly this page. */
 export function OrgSettingsScreen() {
   const { orgId, me } = useAdmin();
   const utils = trpc.useUtils();
@@ -278,32 +278,25 @@ export function OrgSettingsScreen() {
   const update = trpc.core.org.update.useMutation();
   const addAdmin = trpc.core.org.addAdmin.useMutation();
   const removeAdmin = trpc.core.org.removeAdmin.useMutation();
-  const platform = trpc.core.platform.status.useQuery(undefined, { enabled: me.isLeadDashStaff });
-  const authorize = trpc.core.platform.authorizeUrl.useMutation();
-  const setLocation = trpc.core.org.setPlatformLocation.useMutation();
-  const [draft, setDraft] = useState<{ name: string; colorPrimary: string; colorAccent: string; logoFileId: number | null; logoUrl: string | null } | null>(null);
+  const [draft, setDraft] = useState<{ name: string; colorPrimary: string; colorAccent: string; logoFileId: number | null; logoUrl: string | null; allEvents?: boolean } | null>(null);
   const [invite, setInvite] = useState({ email: "", name: "" });
-  const [loc, setLoc] = useState<string | null>(null);
   if (!orgId) return <AdminPage title="Settings"><Empty>Pick an organization on the Events screen first.</Empty></AdminPage>;
   if (org.isLoading) return <AdminPage title="Settings"><PageLoading /></AdminPage>;
   if (org.error) return <AdminPage title="Settings"><ErrorNote error={org.error} /></AdminPage>;
   const o = org.data!;
   const d = draft ?? { name: o.name, colorPrimary: o.colorPrimary, colorAccent: o.colorAccent, logoFileId: o.logoFileId, logoUrl: o.logoUrl };
-  const params = new URLSearchParams(window.location.search);
-
   return (
     <AdminPage title="Settings" sub={o.name}>
-      {params.get("platform") === "connected" ? <div className="banner banner-ok">The LeadDash platform is connected.</div> : null}
-      {params.get("platform") === "failed" ? <div className="banner banner-bad">The LeadDash platform connection did not finish. Try again.</div> : null}
       <div className="card card-pad">
         <EditSection
           title="Organization"
           saving={update.isPending}
           onCancel={() => setDraft(null)}
           onSave={async () => {
-            await update.mutateAsync({ orgId, name: d.name, colorPrimary: d.colorPrimary, colorAccent: d.colorAccent, logoFileId: d.logoFileId });
-            await utils.core.org.get.invalidate();
+            const res = await update.mutateAsync({ orgId, name: d.name, colorPrimary: d.colorPrimary, colorAccent: d.colorAccent, logoFileId: d.logoFileId, allEvents: !!d.allEvents });
+            await Promise.all([utils.core.org.get.invalidate(), utils.core.events.invalidate(), utils.program.branding.invalidate()]);
             setDraft(null);
+            toast(res.eventsUpdated ? `Saved. ${res.eventsUpdated === 1 ? "1 event uses" : `${res.eventsUpdated} events use`} the new look.` : "Saved");
           }}
           view={
             <div>
@@ -335,6 +328,13 @@ export function OrgSettingsScreen() {
                   {d.logoUrl ? <img src={d.logoUrl} alt="Logo" style={{ height: 36 }} /> : null}
                   <UploadButton orgId={orgId} label={d.logoUrl ? "Replace" : "Upload"} onUploaded={(f) => setDraft({ ...d, logoFileId: f.id, logoUrl: f.url })} />
                 </div>
+              </div>
+              <div className="col gap-6 span-3">
+                <span className="small muted">Events using the organization's colors and logo change with them. An event with its own look keeps it.</span>
+                <label className="check">
+                  <input type="checkbox" checked={!!d.allEvents} onChange={(e) => setDraft({ ...d, allEvents: e.target.checked })} />
+                  Use these colors and logo on every event
+                </label>
               </div>
             </div>
           }
@@ -391,9 +391,31 @@ export function OrgSettingsScreen() {
         ) : null}
       </div>
 
-      {me.isLeadDashStaff ? (
+    </AdminPage>
+  );
+}
+
+/** /admin/leaddash: LeadDash staff tools for the organization picked on the Events screen. Organizations never see this page. */
+export function LeadDashToolsScreen() {
+  const { me, orgId } = useAdmin();
+  const utils = trpc.useUtils();
+  const org = trpc.core.org.get.useQuery({ orgId: orgId ?? 0 }, { enabled: !!orgId && me.isLeadDashStaff });
+  const platform = trpc.core.platform.status.useQuery(undefined, { enabled: me.isLeadDashStaff });
+  const authorize = trpc.core.platform.authorizeUrl.useMutation();
+  const setLocation = trpc.core.org.setPlatformLocation.useMutation();
+  const [loc, setLoc] = useState<string | null>(null);
+  if (!me.isLeadDashStaff) return <AdminPage title="LeadDash tools"><Empty>This page is for LeadDash staff.</Empty></AdminPage>;
+  if (!orgId) return <AdminPage title="LeadDash tools"><Empty>Pick an organization on the Events screen first.</Empty></AdminPage>;
+  if (org.isLoading) return <AdminPage title="LeadDash tools"><PageLoading /></AdminPage>;
+  if (org.error) return <AdminPage title="LeadDash tools"><ErrorNote error={org.error} /></AdminPage>;
+  const o = org.data!;
+  const params = new URLSearchParams(window.location.search);
+  return (
+    <AdminPage title="LeadDash tools" sub={`${o.name} · Only LeadDash staff see this page`}>
+      {params.get("platform") === "connected" ? <div className="banner banner-ok">The LeadDash platform is connected.</div> : null}
+      {params.get("platform") === "failed" ? <div className="banner banner-bad">The LeadDash platform connection did not finish. Try again.</div> : null}
         <div className="card card-pad col gap-12">
-          <span className="h3" style={{ fontSize: 14 }}>LeadDash platform (LeadDash staff only)</span>
+          <span className="h3" style={{ fontSize: 14 }}>LeadDash platform</span>
           <KV label="Marketplace app">{platform.data?.configured ? "Set on the server" : "GHL_CLIENT_ID and GHL_CLIENT_SECRET are not set"}</KV>
           <KV label="Agency authorization">{platform.data?.connected ? `Connected (${platform.data.companyId})` : "Not authorized yet"}</KV>
           <KV label="This organization's sub-account">{o.platformLocationId || "Not set"}</KV>
@@ -424,7 +446,6 @@ export function OrgSettingsScreen() {
             </button>
           </div>
         </div>
-      ) : null}
     </AdminPage>
   );
 }

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { freshDb, caller, setupEvent, addAttendee, outbox, user, cookieJar } from "./helpers";
+import { freshDb, caller, setupEvent, addAttendee, outbox, user, cookieJar, getDb, schema } from "./helpers";
+import { eq } from "drizzle-orm";
 
 describe("sign-in and access", () => {
   beforeEach(async () => {
@@ -32,5 +33,15 @@ describe("sign-in and access", () => {
     const other = user("b@example.com");
     const me = await caller(other).core.events.me({ slug: event.slug });
     expect(me.attendee?.id).toBe(attendee.id);
+  });
+  it("passes new organization colors to events that still use them", async () => {
+    const { org, event, admin } = await setupEvent();
+    const db = getDb();
+    const other = db.insert(schema.events).values({ orgId: org.id, slug: "own-colors", name: "Own colors", startDate: "2027-06-01", endDate: "2027-06-02", branding: { colorPrimary: "#123456", colorAccent: "#654321" } }).returning().get();
+    const res = await admin.core.org.update({ orgId: org.id, name: org.name, colorPrimary: "#7B219F", colorAccent: "#7A7A7A", logoFileId: null });
+    expect(res.eventsUpdated).toBe(2); // both still use the organization logo (none)
+    const after = (id: number) => db.select().from(schema.events).where(eq(schema.events.id, id)).get()!.branding;
+    expect(after(event.id)).toMatchObject({ colorPrimary: "#7B219F", colorAccent: "#7A7A7A" });
+    expect(after(other.id)).toMatchObject({ colorPrimary: "#123456", colorAccent: "#654321" });
   });
 });

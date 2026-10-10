@@ -174,6 +174,14 @@ export function AdminPage({ title, sub: subtitle, actions, children, banner }: {
             ))}
           </nav>
         ) : null}
+        {me.isLeadDashStaff ? (
+          <nav aria-label="LeadDash staff" className="sub">
+            <span className="nav-label">LeadDash staff</span>
+            <Link href="/admin/leaddash" aria-current={isActive("/admin/leaddash") ? "page" : undefined} onClick={() => setOpen(false)}>
+              LeadDash tools
+            </Link>
+          </nav>
+        ) : null}
         <div style={{ marginTop: "auto" }} className="small">
           <SignOut />
         </div>

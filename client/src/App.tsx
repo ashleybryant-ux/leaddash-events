@@ -9,11 +9,12 @@ import { routes as memberRoutes } from "./areas/member/routes";
 import { EventApp } from "./shells/AttendeeShell";
 import { AdminApp } from "./shells/AdminShell";
 import { MemberApp } from "./shells/MemberShell";
-import { AdminHomeScreen, EventSettingsScreen, HomeScreen, OrgSettingsScreen } from "./core/screens";
+import { AdminHomeScreen, EventSettingsScreen, HomeScreen, LeadDashToolsScreen, OrgSettingsScreen } from "./core/screens";
 
 const coreRoutes: AppRoute[] = [
   { path: "/admin", shell: "admin", render: () => <AdminHomeScreen /> },
   { path: "/admin/settings", shell: "admin", render: () => <OrgSettingsScreen /> },
+  { path: "/admin/leaddash", shell: "admin", render: () => <LeadDashToolsScreen /> },
   { path: "/admin/e/:eventId/settings", shell: "admin", render: () => <EventSettingsScreen /> },
 ];
 

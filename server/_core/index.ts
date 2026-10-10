@@ -49,10 +49,10 @@ async function startServer() {
     }
     try {
       await handleCallback(String(req.query.code || ""));
-      res.redirect("/admin/settings?platform=connected");
+      res.redirect("/admin/leaddash?platform=connected");
     } catch (err) {
       console.error("[platform] callback failed:", err);
-      res.redirect("/admin/settings?platform=failed");
+      res.redirect("/admin/leaddash?platform=failed");
     }
   });
 

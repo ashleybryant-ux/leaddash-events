@@ -71,15 +71,31 @@ export const coreRouter = router({
       }),
 
     update: protectedProcedure
-      .input(z.object({ orgId: z.number(), name: z.string().min(2).max(120), colorPrimary: hex, colorAccent: hex, logoFileId: z.number().nullable() }))
+      .input(z.object({ orgId: z.number(), name: z.string().min(2).max(120), colorPrimary: hex, colorAccent: hex, logoFileId: z.number().nullable(), allEvents: z.boolean().default(false) }))
       .mutation(({ ctx, input }) => {
         requireOrgAdmin(ctx.user, input.orgId);
-        getDb()
-          .update(schema.organizations)
+        const db = getDb();
+        const before = db.select().from(schema.organizations).where(eq(schema.organizations.id, input.orgId)).get();
+        db.update(schema.organizations)
           .set({ name: input.name, colorPrimary: input.colorPrimary, colorAccent: input.colorAccent, logoFileId: input.logoFileId })
           .where(eq(schema.organizations.id, input.orgId))
           .run();
-        return { ok: true };
+        // Events that still use the organization's colors or logo follow the change.
+        // An event whose Branding was set to its own colors or logo keeps them, unless allEvents is chosen.
+        let eventsUpdated = 0;
+        if (before) {
+          const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+          for (const ev of db.select().from(schema.events).where(eq(schema.events.orgId, input.orgId)).all()) {
+            const br = ev.branding;
+            const colorsFollow = input.allEvents || (same(br.colorPrimary, before.colorPrimary) && same(br.colorAccent, before.colorAccent));
+            const logoFollows = input.allEvents || (br.logoFileId ?? null) === (before.logoFileId ?? null);
+            if (!colorsFollow && !logoFollows) continue;
+            const next = { ...br, ...(colorsFollow ? { colorPrimary: input.colorPrimary, colorAccent: input.colorAccent } : {}), ...(logoFollows ? { logoFileId: input.logoFileId } : {}) };
+            db.update(schema.events).set({ branding: next }).where(eq(schema.events.id, ev.id)).run();
+            eventsUpdated += 1;
+          }
+        }
+        return { ok: true, eventsUpdated };
       }),
 
     team: protectedProcedure.input(z.object({ orgId: z.number() })).query(({ ctx, input }) => {

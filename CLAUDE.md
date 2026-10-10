@@ -28,6 +28,7 @@ A conference app sold as LeadDash Events (first customer: NABC). Each event bran
 - Category filters on busy admin tabs use folder tabs (`FolderTabs`), not chip rows. Dates of birth are never asked. Typed dates are plain text or native date inputs, never custom wheels.
 - No cream or amber page backgrounds; pages use #F8FAFB. Amber pills and bars are fine.
 - Show real names, never ids, wherever the app says who did something.
+- Organization screens look exactly as the organization sees them. LeadDash staff-only tools live on `/admin/leaddash`, never mixed into organization pages.
 - Screens say "organization", never "association". Placeholders and sample text are generic: never a customer's real name or details (no NABC).
 - The LeadDash Events wordmark stays in the admin. An event's own logo and colors appear only on attendee-facing pages (the app, checkout page, emails, badges, certificates).
 - Every route checks access with `server/_core/access.ts` helpers. Attendees only see their own data. Staff see what their role allows.
@@ -41,6 +42,6 @@ Public: `/r/:slug` (checkout page) · `/r/:slug/register` · `/r/:slug/pay` · `
 
 Admin event (`/admin/e/:eventId`): `/sessions` · `/sessions/:sessionId` · `/speakers` · `/speakers/:speakerId` · `/announcements` · `/help` · `/dining` · `/host` · `/branding` · `/registration?tab=tickets|checkout|welcome|payments` · `/checkin` · `/attendees` · `/evaluations` · `/evaluations/:evaluationId` · `/certificates` · `/certificates/:templateId` · `/reports` · `/staff` · `/proposals` · `/vendors` · `/vendors/:vendorId` · `/community` · `/settings`
 
-Admin association (`/admin`): `` (events) · `/settings` · `/payments` · `/members` · `/divisions` · `/documents` · `/insights`
+Admin association (`/admin`): `` (events) · `/settings` · `/payments` · `/members` · `/divisions` · `/documents` · `/insights` · `/leaddash` (LeadDash staff tools)
 
 Member hub (`/m/:orgSlug`): `` · `/card` · `/events` · `/docs` · `/docs/:folderId` · `/groups/:groupId`
