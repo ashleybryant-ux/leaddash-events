@@ -23,6 +23,8 @@ export const threadMembers = sqliteTable(
     threadId: integer("thread_id").notNull().references(() => threads.id, { onDelete: "cascade" }),
     attendeeId: integer("attendee_id").notNull().references(() => attendees.id, { onDelete: "cascade" }),
     lastReadAt: integer("last_read_at", { mode: "timestamp_ms" }),
+    /** The newest message this member has read (unread counts compare ids, not clock times). */
+    lastReadMessageId: integer("last_read_message_id").notNull().default(0),
     muted: integer("muted", { mode: "boolean" }).notNull().default(false),
   },
   (t) => [uniqueIndex("thread_members_unique").on(t.threadId, t.attendeeId)]
@@ -119,6 +121,31 @@ export const posts = sqliteTable(
   (t) => [index("posts_channel").on(t.channelId)]
 );
 
+/** One report per person per post. */
+export const postReports = sqliteTable(
+  "post_reports",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    postId: integer("post_id").notNull().references(() => posts.id, { onDelete: "cascade" }),
+    attendeeId: integer("attendee_id").notNull().references(() => attendees.id, { onDelete: "cascade" }),
+    reason: text("reason").notNull().default(""),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("post_reports_unique").on(t.postId, t.attendeeId)]
+);
+
+/** Community rules for an event. */
+export const communitySettings = sqliteTable("community_settings", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  eventId: integer("event_id").notNull().unique().references(() => events.id, { onDelete: "cascade" }),
+  /** Who can start topics. */
+  whoCanStart: text("who_can_start", { enum: ["attendees", "team"] }).notNull().default("attendees"),
+  /** Exhibitors can post only in topics they started, anywhere, or not at all. */
+  exhibitorPosting: text("exhibitor_posting", { enum: ["own", "anywhere", "none"] }).notNull().default("own"),
+  /** Hide a post once this many people report it. Empty means never. */
+  hideAfterReports: integer("hide_after_reports").default(3),
+});
+
 export const postLikes = sqliteTable(
   "post_likes",
   {
@@ -129,7 +156,7 @@ export const postLikes = sqliteTable(
   (t) => [uniqueIndex("post_likes_unique").on(t.postId, t.attendeeId)]
 );
 
-export type VendorBenefit = { label: string; done: boolean };
+export type VendorBenefit = { label: string; done: boolean; status?: "done" | "not_started" | "waiting" };
 
 /** Exhibitors and sponsors. */
 export const vendors = sqliteTable(
@@ -156,6 +183,10 @@ export const vendors = sqliteTable(
     offer: text("offer").notNull().default(""),
     notes: text("notes").notNull().default(""),
     visible: integer("visible", { mode: "boolean" }).notNull().default(true),
+    /** Shown under the company name in the app ("Practice software"). */
+    category: text("category").notNull().default(""),
+    /** Booth staff can scan attendee badges for leads. */
+    leadScanning: integer("lead_scanning", { mode: "boolean" }).notNull().default(true),
     createdAt: createdAt(),
   },
   (t) => [index("vendors_event").on(t.eventId)]

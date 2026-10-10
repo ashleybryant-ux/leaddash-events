@@ -27,6 +27,12 @@ export const sessions = sqliteTable(
     evaluationId: integer("evaluation_id"),
     published: integer("published", { mode: "boolean" }).notNull().default(true),
     proposalId: integer("proposal_id"),
+    /** When the evaluation opens: when the session ends, or as soon as the attendee checks in. */
+    evaluationOpens: text("evaluation_opens", { enum: ["end", "checkin"] }).notNull().default("end"),
+    /** Certificate template for this session. Empty means the event's default template. */
+    certificateTemplateId: integer("certificate_template_id"),
+    /** When the certificate is issued. Empty means the template's rule. */
+    certificateAfter: text("certificate_after", { enum: ["evaluation", "checkin"] }),
     createdAt: createdAt(),
   },
   (t) => [index("sessions_event").on(t.eventId, t.date)]
@@ -37,7 +43,10 @@ export const speakers = sqliteTable(
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
     eventId: integer("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
+    /** Full name ("Taylor Reed"), kept in step with firstName and lastName. */
     name: text("name").notNull(),
+    firstName: text("first_name").notNull().default(""),
+    lastName: text("last_name").notNull().default(""),
     credentials: text("credentials").notNull().default(""),
     jobTitle: text("job_title").notNull().default(""),
     organization: text("organization").notNull().default(""),
@@ -48,6 +57,8 @@ export const speakers = sqliteTable(
     email: text("email").notNull().default(""),
     featured: integer("featured", { mode: "boolean" }).notNull().default(false),
     userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
+    /** Attendees can message this speaker from the bio sheet. */
+    allowMessages: integer("allow_messages", { mode: "boolean" }).notNull().default(true),
     sort: integer("sort").notNull().default(0),
     createdAt: createdAt(),
   },
@@ -87,8 +98,12 @@ export const announcements = sqliteTable(
     eventId: integer("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
     body: text("body").notNull().default(""),
-    audience: text("audience", { enum: ["everyone", "checked_in", "not_checked_in", "speakers", "vendors", "ticket"] }).notNull().default("everyone"),
+    audience: text("audience", { enum: ["everyone", "checked_in", "not_checked_in", "speakers", "vendors", "ticket", "session"] }).notNull().default("everyone"),
     ticketTypeId: integer("ticket_type_id"),
+    /** Audience "session": people with this session on My agenda or checked in to it. */
+    sessionId: integer("session_id"),
+    /** Saved without sending. */
+    draft: integer("draft", { mode: "boolean" }).notNull().default(false),
     url: text("url").notNull().default(""),
     sendPush: integer("send_push", { mode: "boolean" }).notNull().default(true),
     sendEmail: integer("send_email", { mode: "boolean" }).notNull().default(false),
@@ -102,7 +117,9 @@ export const announcements = sqliteTable(
   (t) => [index("announcements_event").on(t.eventId)]
 );
 
-/** Event menu items and restaurants near the venue. */
+export type MenuItem = { name: string; dietary: string[] };
+
+/** Event meals (with their dishes) and restaurants near the venue. */
 export const diningItems = sqliteTable(
   "dining_items",
   {
@@ -115,6 +132,11 @@ export const diningItems = sqliteTable(
     date: text("date").notNull().default(""),
     meal: text("meal").notNull().default(""),
     time: text("time").notNull().default(""),
+    endTime: text("end_time").notNull().default(""),
+    /** Menu: the dishes served at this meal. */
+    items: text("items", { mode: "json" }).$type<MenuItem[]>().notNull().default(sql`'[]'`),
+    /** Nearby: "quick", "sitdown" or "coffee". */
+    category: text("category").notNull().default(""),
     location: text("location").notNull().default(""),
     dietary: text("dietary", { mode: "json" }).$type<string[]>().notNull().default(sql`'[]'`),
     cuisine: text("cuisine").notNull().default(""),
@@ -169,6 +191,8 @@ export const lostFound = sqliteTable(
     id: integer("id").primaryKey({ autoIncrement: true }),
     eventId: integer("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
     kind: text("kind", { enum: ["lost", "found"] }).notNull(),
+    /** Phone, Keys, Wallet, Bag, Clothing, Other. */
+    category: text("category").notNull().default(""),
     item: text("item").notNull(),
     description: text("description").notNull().default(""),
     place: text("place").notNull().default(""),
@@ -179,3 +203,29 @@ export const lostFound = sqliteTable(
   },
   (t) => [index("lost_found_event").on(t.eventId)]
 );
+
+/** The help desk shown at the top of the help center. */
+export const helpDesks = sqliteTable("help_desks", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  eventId: integer("event_id").notNull().unique().references(() => events.id, { onDelete: "cascade" }),
+  place: text("place").notNull().default(""),
+  hours: text("hours").notNull().default(""),
+  phone: text("phone").notNull().default(""),
+  /** Shown on the lost and found page. */
+  lostFoundNote: text("lost_found_note").notNull().default(""),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
+});
+
+/** Which push notices an attendee wants. In-app alerts are always kept. */
+export const alertPrefs = sqliteTable("alert_prefs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  attendeeId: integer("attendee_id").notNull().unique().references(() => attendees.id, { onDelete: "cascade" }),
+  reminders: integer("reminders", { mode: "boolean" }).notNull().default(true),
+  evaluations: integer("evaluations", { mode: "boolean" }).notNull().default(true),
+  changes: integer("changes", { mode: "boolean" }).notNull().default(true),
+  announcements: integer("announcements", { mode: "boolean" }).notNull().default(true),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
+});
+
+export type Session = typeof sessions.$inferSelect;
+export type Speaker = typeof speakers.$inferSelect;

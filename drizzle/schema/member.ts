@@ -48,6 +48,8 @@ export const groups = sqliteTable(
     chairCanEmail: integer("chair_can_email", { mode: "boolean" }).notNull().default(true),
     chairCanAdd: integer("chair_can_add", { mode: "boolean" }).notNull().default(false),
     nextMeeting: text("next_meeting").notNull().default(""),
+    /** The board of directors: folders set to "Board only" open for its members. */
+    isBoard: integer("is_board", { mode: "boolean" }).notNull().default(false),
     createdAt: createdAt(),
   },
   (t) => [index("groups_org").on(t.orgId)]
@@ -159,4 +161,34 @@ export const programParticipants = sqliteTable(
   (t) => [index("program_participants_program").on(t.programId)]
 );
 
+/** Member hub settings for an association (member number prefix, renewal link). */
+export const memberSettings = sqliteTable("member_settings", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  orgId: integer("org_id").notNull().unique().references(() => organizations.id, { onDelete: "cascade" }),
+  /** Member numbers look like "NB-20419". Empty means one is made from the association's slug. */
+  numberPrefix: text("number_prefix").notNull().default(""),
+  /** Where members renew (the LeadDash platform payment page). */
+  renewUrl: text("renew_url").notNull().default(""),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
+});
+
+/** Reports across programs emailed to admins on a schedule. */
+export const reportSchedules = sqliteTable(
+  "report_schedules",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    orgId: integer("org_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    frequency: text("frequency", { enum: ["weekly", "monthly"] }).notNull().default("monthly"),
+    range: text("range", { enum: ["12m", "year", "3y"] }).notNull().default("12m"),
+    level: text("level").notNull().default(""),
+    nextSendAt: integer("next_send_at", { mode: "timestamp_ms" }).notNull(),
+    lastSentAt: integer("last_sent_at", { mode: "timestamp_ms" }),
+    createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("report_schedules_org").on(t.orgId)]
+);
+
 export type Member = typeof members.$inferSelect;
+export type Group = typeof groups.$inferSelect;

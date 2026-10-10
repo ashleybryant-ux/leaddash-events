@@ -26,6 +26,10 @@ export const evaluations = sqliteTable(
     isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
     /** Hours after the session ends that the evaluation stays open. */
     closesAfterHours: integer("closes_after_hours").notNull().default(720),
+    /** When attendees can open it: when the session ends, or right after they check in. */
+    opensAt: text("opens_at", { enum: ["session_end", "checkin"] }).notNull().default("session_end"),
+    /** Certificates wait for this form when the certificate template asks for an evaluation. */
+    neededForCertificate: integer("needed_for_certificate", { mode: "boolean" }).notNull().default(true),
     createdAt: createdAt(),
   },
   (t) => [index("evaluations_event").on(t.eventId)]
@@ -58,6 +62,8 @@ export const sessionCheckins = sqliteTable(
   (t) => [uniqueIndex("session_checkin_once").on(t.sessionId, t.attendeeId)]
 );
 
+export type CertificateShow = { credentials: boolean; sessionTitle: boolean; sessionDate: boolean; hours: boolean; code: boolean; presenter: boolean };
+
 /** Certificate design and the CE provider details printed on it. */
 export const certificateTemplates = sqliteTable(
   "certificate_templates",
@@ -78,6 +84,14 @@ export const certificateTemplates = sqliteTable(
     /** Minimum minutes in the room (from check-in to session end) to earn credit. */
     minMinutes: integer("min_minutes").notNull().default(0),
     isDefault: integer("is_default", { mode: "boolean" }).notNull().default(true),
+    /** Signature printed as typed script, or an uploaded image. */
+    signatureStyle: text("signature_style", { enum: ["script", "image"] }).notNull().default("script"),
+    signatureFileId: integer("signature_file_id"),
+    /** Which details print on the certificate. */
+    show: text("show", { mode: "json" })
+      .$type<CertificateShow>()
+      .notNull()
+      .default(sql`'{"credentials":true,"sessionTitle":true,"sessionDate":true,"hours":true,"code":true,"presenter":false}'`),
     createdAt: createdAt(),
   },
   (t) => [index("certificate_templates_event").on(t.eventId)]
@@ -100,3 +114,19 @@ export const certificates = sqliteTable(
   },
   (t) => [index("certificates_attendee").on(t.attendeeId), uniqueIndex("certificate_once").on(t.attendeeId, t.sessionId)]
 );
+
+/** Evaluation-ready notices already sent (one per attendee and session, never repeated). */
+export const evaluationReminders = sqliteTable(
+  "evaluation_reminders",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    sessionId: integer("session_id").notNull().references(() => sessions.id, { onDelete: "cascade" }),
+    attendeeId: integer("attendee_id").notNull().references(() => attendees.id, { onDelete: "cascade" }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("evaluation_reminder_once").on(t.sessionId, t.attendeeId)]
+);
+
+export type Evaluation = typeof evaluations.$inferSelect;
+export type CertificateTemplate = typeof certificateTemplates.$inferSelect;
+export type Certificate = typeof certificates.$inferSelect;

@@ -130,6 +130,8 @@ export const orders = sqliteTable(
     stripeAccountId: text("stripe_account_id"),
     stripeSessionId: text("stripe_session_id").unique(),
     stripePaymentIntentId: text("stripe_payment_intent_id"),
+    /** Random token in the confirmation link for free registrations (/r/:slug/done?order=). */
+    doneToken: text("done_token").unique(),
     /** What the buyer typed, held until payment completes. */
     buyer: text("buyer", { mode: "json" }).$type<Record<string, unknown>>().notNull().default(sql`'{}'`),
     paidAt: integer("paid_at", { mode: "timestamp_ms" }),
@@ -148,6 +150,10 @@ export const stripeAccounts = sqliteTable("stripe_accounts", {
   chargesEnabled: integer("charges_enabled", { mode: "boolean" }).notNull().default(false),
   payoutsEnabled: integer("payouts_enabled", { mode: "boolean" }).notNull().default(false),
   bankLast4: text("bank_last4").notNull().default(""),
+  /** Payout schedule from Stripe ("daily", "weekly", "monthly", "manual"). */
+  payoutInterval: text("payout_interval").notNull().default(""),
+  /** Onboarding sent in everything Stripe asked for. */
+  detailsSubmitted: integer("details_submitted", { mode: "boolean" }).notNull().default(false),
   statementDescriptor: text("statement_descriptor").notNull().default(""),
   refundPolicy: text("refund_policy").notNull().default(""),
   connectedAt: integer("connected_at", { mode: "timestamp_ms" }),

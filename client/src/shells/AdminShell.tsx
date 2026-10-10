@@ -131,13 +131,20 @@ export function AdminPage({ title, sub: subtitle, actions, children, banner }: {
           { label: "Divisions and committees", href: "/admin/divisions" },
           { label: "Documents", href: "/admin/documents" },
           { label: "Reports across programs", href: "/admin/insights" },
+          { label: "Payments", href: "/admin/payments" },
           { label: "Settings", href: "/admin/settings" },
         ]
       : []),
   ];
   const mainActive = (href: string) => (href === "/admin" ? location === "/admin" || (location.startsWith("/admin/e/") && !location.endsWith("/checkin")) : isActive(href));
   const sub = event
-    ? eventNav(event.id).filter((n) => (n.adminOnly ? event.access.admin : n.area ? event.access.areas[n.area] !== "none" : true))
+    ? eventNav(event.id).filter((n) =>
+        n.adminOnly
+          ? event.access.admin
+          : n.area
+            ? event.access.areas[n.area] !== "none" || (n.area === "proposals" && event.access.kinds.includes("reviewer"))
+            : true
+      )
     : [];
   return (
     <div className="admin">
