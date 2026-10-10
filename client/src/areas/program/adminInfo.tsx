@@ -6,6 +6,29 @@ import { EditSection, Empty, ErrorNote, ExpandRow, Field, FolderTabs, PageLoadin
 import { errorText, toast } from "../../ui/toast";
 import { eachDay, fmtDate, fmtDates, fmtRange, fmtTime, fmtWhen, fmtWhenTime } from "@shared/format";
 import { Facts, Section } from "./adminProgram";
+import { brandStyle, loadBrandFont } from "../../shells/AttendeeShell";
+import {
+  BACKGROUND_LABELS,
+  BUTTON_TEXT_LABELS,
+  FONTS,
+  HEADER_LABELS,
+  LOOK_BACKGROUNDS,
+  LOOK_BUTTON_TEXT,
+  LOOK_FONTS,
+  LOOK_HEADERS,
+  LOOK_SHAPES,
+  LOOK_TEXT_SIZES,
+  SHAPE_LABELS,
+  SHAPE_RADIUS,
+  TEXT_SIZE_LABELS,
+  THEMES,
+  brandWarnings,
+  buttonInk,
+  colorsFromPixels,
+  mix,
+  readableOn,
+  type Look,
+} from "@shared/brand";
 
 const dateSub = (e: { startDate: string; endDate: string }) => fmtDates(e.startDate, e.endDate);
 
@@ -1200,6 +1223,7 @@ export function AdminHostScreen() {
 type BrandingData = RouterOutputs["program"]["branding"]["get"];
 type Features = BrandingData["features"];
 type Bands = { attendee: string; speaker: string; vendor: string; staff: string };
+type Badge = BrandingData["badge"] & { bandColors: Bands };
 
 const FEATURE_LABELS: { key: keyof Features; label: string }[] = [
   { key: "messaging", label: "Attendee messaging" },
@@ -1220,11 +1244,11 @@ const BAND_LABELS: { key: keyof Bands; label: string }[] = [
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
 
-function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function ColorField({ label, value, onChange, hint }: { label: string; value: string; onChange: (v: string) => void; hint?: string }) {
   return (
-    <Field label={label}>
+    <Field label={label} hint={hint}>
       <div className="row gap-6">
-        <input type="color" aria-label={`${label} picker`} value={HEX.test(value) ? value : "#000000"} onChange={(e) => onChange(e.target.value)} style={{ width: 32, height: 32, padding: 0, border: "1px solid var(--field)", borderRadius: 6, background: "#FFFFFF" }} />
+        <input type="color" aria-label={`${label} picker`} value={HEX.test(value) ? value : "#000000"} onChange={(e) => onChange(e.target.value.toUpperCase())} style={{ width: 32, height: 32, padding: 0, border: "1px solid var(--field)", borderRadius: 6, background: "#FFFFFF", flexShrink: 0 }} />
         <input className="input" value={value} onChange={(e) => onChange(e.target.value)} />
       </div>
     </Field>
@@ -1239,6 +1263,50 @@ function ImageBox({ url, label, size = 56 }: { url: string | null; label: string
   );
 }
 
+/** A row of picture choices (header style, button shape, font). The chosen card has a thick border. */
+function OptionCards<T extends string>({ label, options, value, onChange, columns }: { label: string; options: { key: T; label: string; thumb: ReactNode }[]; value: T; onChange: (v: T) => void; columns?: number }) {
+  return (
+    <div className="col gap-8">
+      <span className="small muted strong">{label}</span>
+      <div role="radiogroup" aria-label={label} style={{ display: "grid", gridTemplateColumns: `repeat(${columns ?? options.length}, minmax(0, 1fr))`, gap: 8 }}>
+        {options.map((o) => {
+          const on = o.key === value;
+          return (
+            <button
+              key={o.key}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              onClick={() => onChange(o.key)}
+              style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 6, padding: on ? 7 : 8, borderRadius: 10, border: on ? "2px solid var(--brand)" : "1px solid var(--line)", background: "#FFFFFF", cursor: "pointer", textAlign: "left" }}
+            >
+              {o.thumb}
+              <span className="small strong" style={{ color: "var(--ink)" }}>{o.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Reads the uploaded logo and suggests a main color and a button color from it. */
+async function colorsFromLogo(url: string) {
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  img.src = url;
+  await img.decode();
+  const canvas = document.createElement("canvas");
+  canvas.width = 64;
+  canvas.height = 64;
+  const g = canvas.getContext("2d");
+  if (!g) return null;
+  g.drawImage(img, 0, 0, 64, 64);
+  return colorsFromPixels(g.getImageData(0, 0, 64, 64).data);
+}
+
+type LookDraft = { colorPrimary: string; colorAccent: string } & Look;
+
 /** /admin/e/:eventId/branding */
 export function AdminBrandingScreen() {
   const event = useAdminEvent();
@@ -1246,7 +1314,12 @@ export function AdminBrandingScreen() {
   const utils = trpc.useUtils();
   const q = trpc.program.branding.get.useQuery({ eventId: event.id });
   const save = trpc.program.branding.update.useMutation();
-  const [f, setF] = useState<null | (Omit<BrandingData, "slug" | "name" | "shortName" | "ticketTypes"> & { badge: BrandingData["badge"] & { bandColors: Bands } })>(null);
+  const [look, setLook] = useState<LookDraft | null>(null);
+  const [ident, setIdent] = useState<null | { appName: string; logoFileId: number | null; logoUrl: string | null; coverFileId: number | null; coverUrl: string | null; iconFileId: number | null; iconUrl: string | null }>(null);
+  const [features, setFeatures] = useState<Features | null>(null);
+  const [badge, setBadge] = useState<Badge | null>(null);
+  const [matching, setMatching] = useState(false);
+  const [previewOf, setPreviewOf] = useState<"app" | "checkout" | "email">("app");
   const tabs = can("attendees") ? (
     <FolderTabs
       tabs={[
@@ -1260,15 +1333,177 @@ export function AdminBrandingScreen() {
   if (q.isLoading) return <AdminPage title={event.name} sub={dateSub(event)}><PageLoading /></AdminPage>;
   if (q.error) return <AdminPage title={event.name} sub={dateSub(event)}><ErrorNote error={q.error} /></AdminPage>;
   const b = q.data!;
-  const saved = { appName: b.appName, colorPrimary: b.colorPrimary, colorAccent: b.colorAccent, logoFileId: b.logoFileId, logoUrl: b.logoUrl, coverFileId: b.coverFileId, coverUrl: b.coverUrl, iconFileId: b.iconFileId, iconUrl: b.iconUrl, features: b.features, badge: { ...b.badge, bandColors: b.badge.bandColors as Bands } };
-  const d = f ?? saved;
-  const set = (patch: Partial<typeof d>) => setF({ ...d, ...patch });
-  const setBadge = (patch: Partial<typeof d.badge>) => setF({ ...d, badge: { ...d.badge, ...patch } });
+  const savedLook: LookDraft = { colorPrimary: b.colorPrimary, colorAccent: b.colorAccent, ...b.look };
+  const savedIdent = { appName: b.appName, logoFileId: b.logoFileId, logoUrl: b.logoUrl, coverFileId: b.coverFileId, coverUrl: b.coverUrl, iconFileId: b.iconFileId, iconUrl: b.iconUrl };
+  const savedBadge: Badge = { ...b.badge, bandColors: b.badge.bandColors as Bands };
+  const L = look ?? savedLook;
+  const I = ident ?? savedIdent;
+  const F = features ?? b.features;
+  const B = badge ?? savedBadge;
+  const setL = (patch: Partial<LookDraft>) => setLook({ ...L, ...patch });
+  const setI = (patch: Partial<typeof I>) => setIdent({ ...I, ...patch });
+  const setB = (patch: Partial<Badge>) => setBadge({ ...B, ...patch });
   const appUrl = `${window.location.origin}/e/${b.slug}`;
-  const colorsOk = HEX.test(d.colorPrimary) && HEX.test(d.colorAccent) && Object.values(d.badge.bandColors).every((c) => HEX.test(c));
+  const warnings = brandWarnings(L);
+  const theme = THEMES.find((t) => t.colorPrimary.toUpperCase() === L.colorPrimary.toUpperCase() && t.colorAccent.toUpperCase() === L.colorAccent.toUpperCase());
   const [first, ...rest] = (me.name || "Taylor Reed").split(" ");
   const sampleLast = rest.join(" ") || "Reed";
   const onFeatures = FEATURE_LABELS.filter((x) => b.features[x.key]).map((x) => x.label);
+
+  /** Saves everything, using the saved values for every section except the one being edited. */
+  const saveAll = async (parts: { look?: LookDraft; ident?: typeof I; features?: Features; badge?: Badge }) => {
+    const lk = parts.look ?? savedLook;
+    const id = parts.ident ?? savedIdent;
+    const bd = parts.badge ?? savedBadge;
+    if (!HEX.test(lk.colorPrimary) || !HEX.test(lk.colorAccent) || !Object.values(bd.bandColors).every((c) => HEX.test(c))) throw new Error("Colors look like #1F5F4A.");
+    await save.mutateAsync({
+      eventId: event.id,
+      appName: id.appName,
+      colorPrimary: lk.colorPrimary,
+      colorAccent: lk.colorAccent,
+      look: { header: lk.header, buttonShape: lk.buttonShape, font: lk.font, buttonText: lk.buttonText, background: lk.background, textSize: lk.textSize },
+      logoFileId: id.logoFileId,
+      coverFileId: id.coverFileId,
+      iconFileId: id.iconFileId,
+      badge: { showCredentials: bd.showCredentials, showOrg: bd.showOrg, showCity: bd.showCity, ribbonByTicket: bd.ribbonByTicket, size: bd.size, nameStyle: bd.nameStyle ?? "first", showQr: bd.showQr ?? true, bandColors: bd.bandColors },
+      features: parts.features ?? b.features,
+    });
+    await Promise.all([utils.program.branding.get.invalidate({ eventId: event.id }), utils.core.events.get.invalidate({ eventId: event.id })]);
+    toast("Branding saved");
+  };
+
+  const matchLogo = async () => {
+    if (!I.logoUrl) return toast("Upload a logo first, under Name, logo and icon.", true);
+    setMatching(true);
+    try {
+      const c = await colorsFromLogo(I.logoUrl);
+      if (!c) toast("The logo has no strong colors to use. Pick a theme instead.", true);
+      else setL(c);
+    } catch {
+      toast("Could not read the logo. Try uploading it again.", true);
+    } finally {
+      setMatching(false);
+    }
+  };
+
+  const brand = HEX.test(L.colorPrimary) ? L.colorPrimary : "#1F5F4A";
+  const lookView = (
+    <Facts
+      items={[
+        { label: "Theme", value: theme?.name ?? "Custom" },
+        { label: "Main color", value: <span className="row gap-6"><span style={{ width: 14, height: 14, borderRadius: 4, background: b.colorPrimary }} />{b.colorPrimary}</span> },
+        { label: "Button color", value: <span className="row gap-6"><span style={{ width: 14, height: 14, borderRadius: 4, background: b.colorAccent }} />{b.colorAccent}</span> },
+        { label: "Button text", value: BUTTON_TEXT_LABELS[b.look.buttonText] },
+        { label: "Page background", value: BACKGROUND_LABELS[b.look.background] },
+        { label: "Text size", value: TEXT_SIZE_LABELS[b.look.textSize] },
+        { label: "Header", value: HEADER_LABELS[b.look.header] },
+        { label: "Button shape", value: SHAPE_LABELS[b.look.buttonShape] },
+        { label: "Font", value: FONTS[b.look.font].label },
+      ]}
+    />
+  );
+  const lookEdit = (
+    <div className="col gap-16">
+      <div className="col gap-8">
+        <div className="row-between">
+          <span className="small muted strong">Start from a theme</span>
+          <button type="button" className="btn btn-sm" disabled={matching} onClick={matchLogo}>{matching ? "Reading logo" : "Match my logo"}</button>
+        </div>
+        <div role="radiogroup" aria-label="Theme" style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 8 }}>
+          {THEMES.map((t) => {
+            const on = theme?.name === t.name;
+            return (
+              <button key={t.name} type="button" role="radio" aria-checked={on} onClick={() => setL({ colorPrimary: t.colorPrimary, colorAccent: t.colorAccent })} style={{ display: "flex", flexDirection: "column", gap: 6, padding: on ? 7 : 8, borderRadius: 10, border: on ? "2px solid var(--brand)" : "1px solid var(--line)", background: "#FFFFFF", cursor: "pointer", alignItems: "stretch" }}>
+                <span style={{ display: "flex", height: 28, borderRadius: 6, overflow: "hidden" }}>
+                  <span style={{ flex: 2, background: t.colorPrimary }} />
+                  <span style={{ flex: 1, background: t.colorAccent }} />
+                </span>
+                <span className="small strong" style={{ color: "var(--ink)", textAlign: "left" }}>{t.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="grid-3">
+        <ColorField label="Main color" value={L.colorPrimary} onChange={(v) => setL({ colorPrimary: v })} hint="Header, menu, links, dates" />
+        <ColorField label="Button color" value={L.colorAccent} onChange={(v) => setL({ colorAccent: v })} hint="Register, Add to my agenda" />
+        <Field label="Button text" hint="Picks what is easy to read">
+          <select className="select" value={L.buttonText} onChange={(e) => setL({ buttonText: e.target.value as Look["buttonText"] })}>
+            {LOOK_BUTTON_TEXT.map((k) => <option key={k} value={k}>{BUTTON_TEXT_LABELS[k]}</option>)}
+          </select>
+        </Field>
+        <Field label="Page background">
+          <select className="select" value={L.background} onChange={(e) => setL({ background: e.target.value as Look["background"] })}>
+            {LOOK_BACKGROUNDS.map((k) => <option key={k} value={k}>{BACKGROUND_LABELS[k]}</option>)}
+          </select>
+        </Field>
+        <Field label="Text size">
+          <select className="select" value={L.textSize} onChange={(e) => setL({ textSize: e.target.value as Look["textSize"] })}>
+            {LOOK_TEXT_SIZES.map((k) => <option key={k} value={k}>{TEXT_SIZE_LABELS[k]}</option>)}
+          </select>
+        </Field>
+      </div>
+      {warnings.length ? (
+        <div className="banner banner-warn" style={{ justifyContent: "flex-start" }}>{warnings.join(" ")}</div>
+      ) : (
+        <div className="banner banner-ok" style={{ justifyContent: "flex-start" }}>Easy to read: text on the header and buttons passes the contrast check.</div>
+      )}
+      <OptionCards
+        label="Header"
+        value={L.header}
+        onChange={(v) => setL({ header: v })}
+        options={LOOK_HEADERS.map((k) => ({
+          key: k,
+          label: HEADER_LABELS[k],
+          thumb: (
+            <span
+              style={{
+                height: 34,
+                borderRadius: 6,
+                boxSizing: "border-box",
+                display: "flex",
+                alignItems: k === "cover" ? "flex-end" : "center",
+                padding: k === "cover" ? "0 8px 5px" : "0 8px",
+                gap: 6,
+                background: k === "light" ? "#FFFFFF" : k === "cover" ? (I.coverUrl ? `linear-gradient(rgba(0,0,0,0.35), rgba(0,0,0,0.35)), url("${I.coverUrl}") center / cover` : `linear-gradient(135deg, ${brand}, ${mix(brand, "#FFFFFF", 0.4)})`) : brand,
+                border: k === "light" ? "1px solid var(--line)" : "none",
+                borderBottom: k === "light" ? `3px solid ${brand}` : "none",
+              }}
+            >
+              <span style={{ width: 12, height: 12, borderRadius: 3, background: k === "light" ? brand : "#FFFFFF" }} />
+              <span style={{ width: 50, height: 6, borderRadius: 3, background: k === "light" ? "var(--ink)" : "#FFFFFF" }} />
+            </span>
+          ),
+        }))}
+      />
+      {L.header === "cover" && !I.coverUrl ? <div className="small muted">Upload a cover under Name, logo and icon. Until then the header uses the main color.</div> : null}
+      <OptionCards
+        label="Button shape"
+        value={L.buttonShape}
+        onChange={(v) => setL({ buttonShape: v })}
+        options={LOOK_SHAPES.map((k) => ({
+          key: k,
+          label: SHAPE_LABELS[k],
+          thumb: (
+            <span style={{ height: 30, borderRadius: k === "pill" ? 15 : SHAPE_RADIUS[k], background: HEX.test(L.colorAccent) ? L.colorAccent : "#E88A3A", color: buttonInk(L), fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>Register</span>
+          ),
+        }))}
+      />
+      <OptionCards
+        label="Font"
+        value={L.font}
+        onChange={(v) => {
+          loadBrandFont({ font: v });
+          setL({ font: v });
+        }}
+        options={LOOK_FONTS.map((k) => {
+          loadBrandFont({ font: k });
+          return { key: k, label: FONTS[k].label, thumb: <span style={{ height: 30, fontFamily: FONTS[k].css, fontSize: 20, fontWeight: 700, color: "var(--ink)", display: "flex", alignItems: "center" }}>Aa</span> };
+        })}
+      />
+      <div className="small muted">Used on the app, checkout page, call for proposals page, emails and badges.</div>
+    </div>
+  );
 
   return (
     <AdminPage title={event.name} sub={dateSub(event)}>
@@ -1276,60 +1511,46 @@ export function AdminBrandingScreen() {
         {tabs}
         <div className={tabs ? "folder-body" : "card card-pad col gap-16"}>
           <div className="row gap-24 wrap" style={{ alignItems: "flex-start" }}>
-            <div className="col gap-16" style={{ flex: "1 1 520px", minWidth: 0 }}>
+            <div className="col gap-20" style={{ flex: "1 1 560px", minWidth: 0 }}>
               <EditSection
-                title="App branding"
+                title="App look"
                 saving={save.isPending}
-                onCancel={() => setF(null)}
+                onCancel={() => setLook(null)}
                 onSave={async () => {
-                  if (!colorsOk) throw new Error("Colors look like #1F5F4A.");
-                  await save.mutateAsync({
-                    eventId: event.id,
-                    appName: d.appName,
-                    colorPrimary: d.colorPrimary,
-                    colorAccent: d.colorAccent,
-                    logoFileId: d.logoFileId,
-                    coverFileId: d.coverFileId,
-                    iconFileId: d.iconFileId,
-                    badge: { showCredentials: d.badge.showCredentials, showOrg: d.badge.showOrg, showCity: d.badge.showCity, ribbonByTicket: d.badge.ribbonByTicket, size: d.badge.size, nameStyle: d.badge.nameStyle ?? "first", showQr: d.badge.showQr ?? true, bandColors: d.badge.bandColors },
-                    features: d.features,
-                  });
-                  setF(null);
-                  await Promise.all([utils.program.branding.get.invalidate({ eventId: event.id }), utils.core.events.get.invalidate({ eventId: event.id })]);
-                  toast("Branding saved");
+                  await saveAll({ look: L });
+                  setLook(null);
+                }}
+                view={lookView}
+                edit={lookEdit}
+              />
+              <div className="divider" />
+              <EditSection
+                title="Name, logo and icon"
+                saving={save.isPending}
+                onCancel={() => setIdent(null)}
+                onSave={async () => {
+                  await saveAll({ ident: I });
+                  setIdent(null);
                 }}
                 view={
                   <div className="col gap-16">
                     <div className="row gap-16">
                       <div className="col gap-4"><span className="small muted strong">Logo</span><ImageBox url={b.logoUrl} label="Logo" /></div>
                       <div className="col gap-4"><span className="small muted strong">App icon</span><ImageBox url={b.iconUrl} label="Icon" /></div>
-                      <div className="col gap-4"><span className="small muted strong">Cover</span><ImageBox url={b.coverUrl} label="Cover" size={56} /></div>
+                      <div className="col gap-4"><span className="small muted strong">Cover</span><ImageBox url={b.coverUrl} label="Cover" /></div>
                     </div>
-                    <Facts
-                      items={[
-                        { label: "App name", value: b.appName },
-                        { label: "Main color", value: <span className="row gap-6"><span style={{ width: 14, height: 14, borderRadius: 4, background: b.colorPrimary }} />{b.colorPrimary}</span> },
-                        { label: "Button color", value: <span className="row gap-6"><span style={{ width: 14, height: 14, borderRadius: 4, background: b.colorAccent }} />{b.colorAccent}</span> },
-                        { label: "App address", value: appUrl, wide: true },
-                        { label: "In the app", value: onFeatures.length ? onFeatures.join(", ") : "Agenda only", wide: true },
-                        { label: "Badge size", value: b.badge.size === "4x6" ? "4 x 6 in" : "4 x 3 in" },
-                        { label: "Name style", value: b.badge.nameStyle === "full" ? "Full name" : "First name large" },
-                        {
-                          label: "Show on badge",
-                          value: [b.badge.showCredentials && "Credentials", b.badge.showCity && "City and state", b.badge.showOrg && "Organization", b.badge.showQr && "QR code", b.badge.ribbonByTicket && "Attendee type band"].filter(Boolean).join(", "),
-                        },
-                      ]}
-                    />
+                    <Facts items={[{ label: "App name", value: b.appName }, { label: "App address", value: appUrl, wide: true }]} />
                   </div>
                 }
                 edit={
                   <div className="col gap-16">
                     <div className="grid-3">
                       <Field label="App name">
-                        <input className="input" value={d.appName} onChange={(e) => set({ appName: e.target.value })} />
+                        <input className="input" value={I.appName} onChange={(e) => setI({ appName: e.target.value })} />
                       </Field>
-                      <ColorField label="Main color" value={d.colorPrimary} onChange={(v) => set({ colorPrimary: v })} />
-                      <ColorField label="Button color" value={d.colorAccent} onChange={(v) => set({ colorAccent: v })} />
+                      <Field label="App address" className="span-2">
+                        <input className="input" readOnly value={appUrl} />
+                      </Field>
                     </div>
                     <div className="row gap-20 wrap">
                       {([
@@ -1337,47 +1558,78 @@ export function AdminBrandingScreen() {
                         { key: "icon", label: "App icon" },
                         { key: "cover", label: "Cover" },
                       ] as const).map((img) => {
-                        const url = d[`${img.key}Url`];
-                        const id = d[`${img.key}FileId`];
+                        const url = I[`${img.key}Url`];
+                        const id = I[`${img.key}FileId`];
                         return (
                           <div key={img.key} className="col gap-6">
                             <span className="small muted strong">{img.label}</span>
                             <div className="row gap-8">
                               <ImageBox url={url} label={img.key === "logo" ? "Logo" : img.key === "icon" ? "Icon" : "Cover"} />
                               <div className="col gap-6">
-                                <UploadButton eventId={event.id} label={id ? "Replace" : "Upload"} onUploaded={(file) => set({ [`${img.key}FileId`]: file.id, [`${img.key}Url`]: file.url } as Partial<typeof d>)} />
-                                {id ? <button className="btn btn-sm btn-w" onClick={() => set({ [`${img.key}FileId`]: null, [`${img.key}Url`]: null } as Partial<typeof d>)}>Remove</button> : null}
+                                <UploadButton eventId={event.id} label={id ? "Replace" : "Upload"} onUploaded={(file) => setI({ [`${img.key}FileId`]: file.id, [`${img.key}Url`]: file.url } as Partial<typeof I>)} />
+                                {id ? <button className="btn btn-sm btn-w" onClick={() => setI({ [`${img.key}FileId`]: null, [`${img.key}Url`]: null } as Partial<typeof I>)}>Remove</button> : null}
                               </div>
                             </div>
                           </div>
                         );
                       })}
                     </div>
-                    <Field label="App address">
-                      <input className="input" readOnly value={appUrl} />
-                    </Field>
-                    <div className="col gap-8">
-                      <span className="small muted strong">In the app</span>
-                      <div className="grid-3" style={{ gap: 8 }}>
-                        {FEATURE_LABELS.map((x) => (
-                          <label key={x.key} className="check">
-                            <input type="checkbox" checked={d.features[x.key]} onChange={(e) => set({ features: { ...d.features, [x.key]: e.target.checked } })} />
-                            {x.label}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="divider" />
-                    <span className="h3" style={{ fontSize: 14 }}>Badge</span>
+                  </div>
+                }
+              />
+              <div className="divider" />
+              <EditSection
+                title="In the app"
+                saving={save.isPending}
+                onCancel={() => setFeatures(null)}
+                onSave={async () => {
+                  await saveAll({ features: F });
+                  setFeatures(null);
+                }}
+                view={<Facts items={[{ label: "Turned on", value: onFeatures.length ? onFeatures.join(", ") : "Agenda only", wide: true }]} />}
+                edit={
+                  <div className="grid-3" style={{ gap: 8 }}>
+                    {FEATURE_LABELS.map((x) => (
+                      <label key={x.key} className="check">
+                        <input type="checkbox" checked={F[x.key]} onChange={(e) => setFeatures({ ...F, [x.key]: e.target.checked })} />
+                        {x.label}
+                      </label>
+                    ))}
+                  </div>
+                }
+              />
+              <div className="divider" />
+              <EditSection
+                title="Badge"
+                saving={save.isPending}
+                onCancel={() => setBadge(null)}
+                onSave={async () => {
+                  await saveAll({ badge: B });
+                  setBadge(null);
+                }}
+                view={
+                  <Facts
+                    items={[
+                      { label: "Badge size", value: b.badge.size === "4x6" ? "4 x 6 in" : "4 x 3 in" },
+                      { label: "Name style", value: b.badge.nameStyle === "full" ? "Full name" : "First name large" },
+                      {
+                        label: "Show on badge",
+                        value: [b.badge.showCredentials && "Credentials", b.badge.showCity && "City and state", b.badge.showOrg && "Organization", b.badge.showQr && "QR code", b.badge.ribbonByTicket && "Attendee type band"].filter(Boolean).join(", "),
+                      },
+                    ]}
+                  />
+                }
+                edit={
+                  <div className="col gap-16">
                     <div className="grid-3">
                       <Field label="Badge size">
-                        <select className="select" value={d.badge.size} onChange={(e) => setBadge({ size: e.target.value as "4x3" | "4x6" })}>
+                        <select className="select" value={B.size} onChange={(e) => setB({ size: e.target.value as "4x3" | "4x6" })}>
                           <option value="4x3">4 x 3 in</option>
                           <option value="4x6">4 x 6 in</option>
                         </select>
                       </Field>
                       <Field label="Name style">
-                        <select className="select" value={d.badge.nameStyle ?? "first"} onChange={(e) => setBadge({ nameStyle: e.target.value as "first" | "full" })}>
+                        <select className="select" value={B.nameStyle ?? "first"} onChange={(e) => setB({ nameStyle: e.target.value as "first" | "full" })}>
                           <option value="first">First name large</option>
                           <option value="full">Full name</option>
                         </select>
@@ -1386,19 +1638,19 @@ export function AdminBrandingScreen() {
                     <div className="col gap-8">
                       <span className="small muted strong">Show on badge</span>
                       <div className="row gap-16 wrap">
-                        <label className="check"><input type="checkbox" checked={d.badge.showCredentials} onChange={(e) => setBadge({ showCredentials: e.target.checked })} />Credentials</label>
-                        <label className="check"><input type="checkbox" checked={d.badge.showCity} onChange={(e) => setBadge({ showCity: e.target.checked })} />City and state</label>
-                        <label className="check"><input type="checkbox" checked={d.badge.showOrg} onChange={(e) => setBadge({ showOrg: e.target.checked })} />Organization</label>
-                        <label className="check"><input type="checkbox" checked={d.badge.showQr ?? true} onChange={(e) => setBadge({ showQr: e.target.checked })} />QR code</label>
-                        <label className="check"><input type="checkbox" checked={d.badge.ribbonByTicket} onChange={(e) => setBadge({ ribbonByTicket: e.target.checked })} />Attendee type band</label>
+                        <label className="check"><input type="checkbox" checked={B.showCredentials} onChange={(e) => setB({ showCredentials: e.target.checked })} />Credentials</label>
+                        <label className="check"><input type="checkbox" checked={B.showCity} onChange={(e) => setB({ showCity: e.target.checked })} />City and state</label>
+                        <label className="check"><input type="checkbox" checked={B.showOrg} onChange={(e) => setB({ showOrg: e.target.checked })} />Organization</label>
+                        <label className="check"><input type="checkbox" checked={B.showQr ?? true} onChange={(e) => setB({ showQr: e.target.checked })} />QR code</label>
+                        <label className="check"><input type="checkbox" checked={B.ribbonByTicket} onChange={(e) => setB({ ribbonByTicket: e.target.checked })} />Attendee type band</label>
                       </div>
                     </div>
-                    {d.badge.ribbonByTicket ? (
+                    {B.ribbonByTicket ? (
                       <div className="col gap-8">
                         <span className="small muted strong">Band color by attendee type</span>
                         <div className="grid-4">
                           {BAND_LABELS.map((x) => (
-                            <ColorField key={x.key} label={x.label} value={d.badge.bandColors[x.key]} onChange={(v) => setBadge({ bandColors: { ...d.badge.bandColors, [x.key]: v } })} />
+                            <ColorField key={x.key} label={x.label} value={B.bandColors[x.key]} onChange={(v) => setB({ bandColors: { ...B.bandColors, [x.key]: v } })} />
                           ))}
                         </div>
                       </div>
@@ -1407,11 +1659,21 @@ export function AdminBrandingScreen() {
                 }
               />
             </div>
-            <div className="col gap-16" style={{ flex: "1 1 300px", minWidth: 0 }}>
-              <span className="h3" style={{ fontSize: 14 }}>Preview</span>
-              <AppPreview d={d} eventName={event.name} />
+            <div className="col gap-12" style={{ flex: "0 1 340px", minWidth: 0 }}>
+              <div className="row-between">
+                <span className="h3" style={{ fontSize: 14 }}>Preview</span>
+                <div role="tablist" aria-label="Preview" className="row" style={{ gap: 0, border: "1px solid var(--field)", borderRadius: 8, overflow: "hidden" }}>
+                  {(["app", "checkout", "email"] as const).map((k) => (
+                    <button key={k} type="button" role="tab" aria-selected={previewOf === k} onClick={() => setPreviewOf(k)} style={{ height: 30, padding: "0 12px", border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer", background: previewOf === k ? "var(--brand)" : "#FFFFFF", color: previewOf === k ? "#FFFFFF" : "var(--muted)" }}>
+                      {k === "app" ? "App" : k === "checkout" ? "Checkout" : "Email"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <span className="small muted">Changes show here as you pick them.</span>
+              {previewOf === "app" ? <AppPreview look={L} appName={I.appName || event.name} logoUrl={I.logoUrl} coverUrl={I.coverUrl} /> : previewOf === "checkout" ? <CheckoutPreview look={L} name={event.name} coverUrl={I.coverUrl} /> : <EmailPreview look={L} name={event.name} coverUrl={I.coverUrl} />}
               <span className="h3" style={{ fontSize: 14 }}>Badge preview</span>
-              <BadgePreview d={d} eventName={event.name} first={first} last={sampleLast} credentials="PhD" city={event.city} url={appUrl} />
+              <BadgePreview look={L} badge={B} logoUrl={I.logoUrl} name={I.appName || event.name} first={first} last={sampleLast} credentials="PhD" city={event.city} url={appUrl} />
             </div>
           </div>
         </div>
@@ -1420,56 +1682,128 @@ export function AdminBrandingScreen() {
   );
 }
 
-type Draft = { appName: string; colorPrimary: string; colorAccent: string; logoUrl: string | null; coverUrl: string | null; badge: BrandingData["badge"] & { bandColors: Bands } };
+const SAMPLE_SESSIONS = [
+  { time: "8:30 AM to 9:45 AM", title: "Opening General Session", room: "Ballroom A", track: "General", added: true },
+  { time: "10:00 AM to 11:30 AM", title: "Building Better Teams", room: "Room 204", track: "Leadership", added: false },
+  { time: "1:15 PM to 2:15 PM", title: "Ethics in Practice", room: "Room 110", track: "Ethics", added: false },
+];
 
-function AppPreview({ d, eventName }: { d: Draft; eventName: string }) {
-  const brand = HEX.test(d.colorPrimary) ? d.colorPrimary : "#1F5F4A";
-  const accent = HEX.test(d.colorAccent) ? d.colorAccent : "#e88a3a";
+function Logo({ url, size, bg, ink }: { url: string | null; size: number; bg: string; ink: string }) {
   return (
-    <div style={{ width: 260, borderRadius: 28, border: "8px solid #0F2A23", overflow: "hidden", background: "#FFFFFF", alignSelf: "flex-start" }}>
-      <div style={{ background: brand, color: "#FFFFFF", padding: "28px 18px 22px", display: "flex", flexDirection: "column", alignItems: "center", gap: 10, textAlign: "center", backgroundImage: d.coverUrl ? `linear-gradient(rgba(0,0,0,0.25), rgba(0,0,0,0.25)), url(${d.coverUrl})` : undefined, backgroundSize: "cover" }}>
-        <div style={{ width: 64, height: 64, borderRadius: 16, background: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-          {d.logoUrl ? <img src={d.logoUrl} alt="" style={{ width: "80%", height: "80%", objectFit: "contain" }} /> : <span style={{ color: brand, fontWeight: 800, fontSize: 12 }}>LOGO</span>}
-        </div>
-        <div style={{ fontWeight: 800, fontSize: 16, lineHeight: 1.25 }}>{d.appName || eventName}</div>
+    <span style={{ width: size, height: size, borderRadius: size / 4, background: bg, color: ink, fontSize: 8, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
+      {url ? <img src={url} alt="" style={{ width: "82%", height: "82%", objectFit: "contain" }} /> : "LOGO"}
+    </span>
+  );
+}
+
+/** The agenda screen drawn with the draft look, using the same CSS variables as the real app. */
+function AppPreview({ look, appName, logoUrl, coverUrl }: { look: LookDraft; appName: string; logoUrl: string | null; coverUrl: string | null }) {
+  const vars = brandStyle(look, coverUrl);
+  const light = look.header === "light";
+  const zoom = look.textSize === "larger" ? 1.1 : 1;
+  return (
+    <div style={{ ...vars, width: 290, height: 580, alignSelf: "center", borderRadius: 30, border: "8px solid #0F2A23", overflow: "hidden", background: "var(--app-bg)", fontFamily: "var(--app-font)", display: "flex", flexDirection: "column", boxSizing: "border-box" }}>
+      <div style={{ backgroundColor: "var(--header-bg)", backgroundImage: "var(--header-image)", backgroundSize: "cover", backgroundPosition: "center", borderBottom: "3px solid var(--header-border)", color: "var(--header-ink)", padding: look.header === "cover" && coverUrl ? "30px 14px 12px" : "14px", display: "flex", alignItems: "center", gap: 10 }}>
+        <Logo url={logoUrl} size={30} bg={light ? "var(--brand)" : "#FFFFFF"} ink={light ? "var(--on-brand)" : "var(--brand)"} />
+        <span className="clip" style={{ fontSize: 15, fontWeight: 800 }}>{appName}</span>
       </div>
-      <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={{ height: 40, borderRadius: 10, background: accent, color: "#1A1206", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>Check in</div>
-        <div className="row small strong muted" style={{ justifyContent: "center", gap: 6 }}>Powered by LeadDash Events</div>
+      <div style={{ flex: 1, padding: 12, display: "flex", flexDirection: "column", gap: 10, overflow: "hidden", zoom }}>
+        <span style={{ fontSize: 17, fontWeight: 800, color: "var(--ink)" }}>Agenda</span>
+        <div style={{ display: "flex", gap: 6 }}>
+          {["Thu, Apr 22", "Fri, Apr 23", "Sat, Apr 24"].map((d, i) => (
+            <span key={d} style={{ flex: 1, textAlign: "center", padding: "6px 0", borderRadius: look.buttonShape === "pill" ? 999 : look.buttonShape === "square" ? 4 : 8, fontSize: 11, fontWeight: 700, ...(i === 0 ? { background: "var(--brand)", color: "var(--on-brand)" } : { background: "#FFFFFF", color: "var(--muted)", border: "1px solid var(--line)" }) }}>{d}</span>
+          ))}
+        </div>
+        {SAMPLE_SESSIONS.map((s) => (
+          <div key={s.title} style={{ background: "#FFFFFF", border: "1px solid var(--line)", borderRadius: 12, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 5 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "var(--brand)" }}>{s.time}</span>
+            <span style={{ fontSize: 13, fontWeight: 800, color: "var(--ink)" }}>{s.title}</span>
+            <span style={{ fontSize: 11, color: "var(--muted)" }}>
+              {s.room} · <span style={{ color: "var(--brand)", background: "var(--brand-tint)", borderRadius: 4, padding: "1px 6px", fontWeight: 700 }}>{s.track}</span>
+            </span>
+            <div>
+              {s.added ? (
+                <span style={{ height: 30, padding: "0 12px", borderRadius: "var(--btn-radius)", border: "1.5px solid var(--brand)", color: "var(--brand)", background: "#FFFFFF", fontSize: 11, fontWeight: 800, display: "inline-flex", alignItems: "center" }}>On my agenda</span>
+              ) : (
+                <span style={{ height: 30, padding: "0 12px", borderRadius: "var(--btn-radius)", background: "var(--accent)", color: "var(--accent-ink)", fontSize: 11, fontWeight: 800, display: "inline-flex", alignItems: "center" }}>Add to my agenda</span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ background: "#FFFFFF", borderTop: "1px solid var(--line)", padding: "8px 6px 10px", display: "flex", justifyContent: "space-around" }}>
+        {["Agenda", "My agenda", "Community", "Messages", "More"].map((n, i) => (
+          <span key={n} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 700, color: i === 0 ? "var(--brand)" : "#7A8A85" }}>
+            <span style={{ width: 18, height: 18, borderRadius: 5, background: i === 0 ? "var(--brand)" : "#C9D5D0" }} />
+            {n}
+          </span>
+        ))}
       </div>
     </div>
   );
 }
 
-function BadgePreview({ d, eventName, first, last, credentials, city, url }: { d: Draft; eventName: string; first: string; last: string; credentials: string; city: string; url: string }) {
-  const brand = HEX.test(d.colorPrimary) ? d.colorPrimary : "#1F5F4A";
-  const band = HEX.test(d.badge.bandColors.speaker) ? d.badge.bandColors.speaker : "#e88a3a";
-  const tall = d.badge.size === "4x6";
+function CheckoutPreview({ look, name, coverUrl }: { look: LookDraft; name: string; coverUrl: string | null }) {
   return (
-    <div style={{ width: 260, height: tall ? 390 : 195, border: "1px solid var(--line)", borderRadius: 10, background: "#FFFFFF", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-      <div style={{ background: brand, color: "#FFFFFF", padding: "8px 12px", display: "flex", alignItems: "center", gap: 8 }}>
-        <div style={{ width: 24, height: 24, borderRadius: 6, background: "#FFFFFF", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          {d.logoUrl ? <img src={d.logoUrl} alt="" style={{ width: "80%", height: "80%", objectFit: "contain" }} /> : <span style={{ color: brand, fontSize: 7, fontWeight: 800 }}>LOGO</span>}
+    <div style={{ ...brandStyle(look, coverUrl), border: "1px solid var(--line)", borderRadius: 14, overflow: "hidden", background: "var(--app-bg)", fontFamily: "var(--app-font)" }}>
+      <div style={{ height: 110, background: coverUrl ? `url("${coverUrl}") center / cover` : "linear-gradient(135deg, var(--brand), var(--brand-dark))" }} />
+      <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+        <span style={{ fontSize: 18, fontWeight: 800, color: "var(--ink)" }}>{name}</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: "var(--brand)" }}>Apr 22, 2027 to Apr 24, 2027</span>
+        {[["Full conference", "$395.00", true], ["One day", "$175.00", false]].map(([t, p, on]) => (
+          <div key={String(t)} style={{ background: "#FFFFFF", border: on ? "2px solid var(--brand)" : "1px solid var(--line)", borderRadius: 12, padding: on ? 11 : 12, display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+            <span style={{ fontWeight: 800, color: "var(--ink)" }}>{t}</span>
+            <span style={{ fontWeight: 700, color: "var(--ink)" }}>{p}</span>
+          </div>
+        ))}
+        <span style={{ height: 44, borderRadius: "var(--btn-radius)", background: "var(--accent)", color: "var(--accent-ink)", fontSize: 15, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>Register</span>
+      </div>
+    </div>
+  );
+}
+
+function EmailPreview({ look, name, coverUrl }: { look: LookDraft; name: string; coverUrl: string | null }) {
+  return (
+    <div style={{ ...brandStyle(look, coverUrl), background: "#F8FAFB", border: "1px solid var(--line)", borderRadius: 14, padding: 12 }}>
+      <div style={{ background: "#FFFFFF", border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden", fontFamily: "var(--app-font)", color: "var(--ink)" }}>
+        {coverUrl ? <div style={{ height: 90, background: `url("${coverUrl}") center / cover` }} /> : <div style={{ height: 8, background: "var(--brand)" }} />}
+        <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10, fontSize: 13, lineHeight: 1.5 }}>
+          <span style={{ fontSize: 17, fontWeight: 800 }}>You're registered</span>
+          <span>Thanks for registering for {name}. Your ticket and receipt are below.</span>
+          <span style={{ alignSelf: "flex-start", padding: "10px 18px", borderRadius: "var(--btn-radius)", background: "var(--accent)", color: "var(--accent-ink)", fontWeight: 800 }}>Get the app</span>
+          <span className="small muted">Sent with LeadDash Events</span>
         </div>
-        <span className="clip" style={{ fontSize: 11, fontWeight: 700 }}>{d.appName || eventName}</span>
+      </div>
+    </div>
+  );
+}
+
+function BadgePreview({ look, badge, logoUrl, name, first, last, credentials, city, url }: { look: LookDraft; badge: Badge; logoUrl: string | null; name: string; first: string; last: string; credentials: string; city: string; url: string }) {
+  const brand = HEX.test(look.colorPrimary) ? look.colorPrimary : "#1F5F4A";
+  const band = HEX.test(badge.bandColors.speaker) ? badge.bandColors.speaker : "#e88a3a";
+  const tall = badge.size === "4x6";
+  return (
+    <div style={{ width: 260, height: tall ? 390 : 195, border: "1px solid var(--line)", borderRadius: 10, background: "#FFFFFF", display: "flex", flexDirection: "column", overflow: "hidden", fontFamily: FONTS[look.font].css }}>
+      <div style={{ background: brand, color: readableOn(brand), padding: "8px 12px", display: "flex", alignItems: "center", gap: 8 }}>
+        <Logo url={logoUrl} size={24} bg="#FFFFFF" ink={brand} />
+        <span className="clip" style={{ fontSize: 11, fontWeight: 700 }}>{name}</span>
       </div>
       <div className="row grow" style={{ padding: "10px 12px", alignItems: tall ? "flex-start" : "center", gap: 10, flexDirection: tall ? "column" : "row" }}>
         <div className="col grow" style={{ gap: 2 }}>
-          {d.badge.nameStyle === "full" ? (
-            <span style={{ fontSize: 20, fontWeight: 800, lineHeight: 1.1 }}>{first} {last}{d.badge.showCredentials ? `, ${credentials}` : ""}</span>
+          {badge.nameStyle === "full" ? (
+            <span style={{ fontSize: 20, fontWeight: 800, lineHeight: 1.1 }}>{first} {last}{badge.showCredentials ? `, ${credentials}` : ""}</span>
           ) : (
             <>
               <span style={{ fontSize: 26, fontWeight: 800, lineHeight: 1.05 }}>{first}</span>
-              <span style={{ fontSize: 14, fontWeight: 700 }}>{last}{d.badge.showCredentials ? `, ${credentials}` : ""}</span>
+              <span style={{ fontSize: 14, fontWeight: 700 }}>{last}{badge.showCredentials ? `, ${credentials}` : ""}</span>
             </>
           )}
-          {d.badge.showOrg ? <span className="small muted">Organization</span> : null}
-          {d.badge.showCity && city ? <span className="small muted">{city}</span> : null}
+          {badge.showOrg ? <span className="small muted">Organization</span> : null}
+          {badge.showCity && city ? <span className="small muted">{city}</span> : null}
         </div>
-        {d.badge.showQr ?? true ? <QR value={url} size={tall ? 90 : 64} label="Badge QR code preview" /> : null}
+        {badge.showQr ?? true ? <QR value={url} size={tall ? 90 : 64} label="Badge QR code preview" /> : null}
       </div>
-      {d.badge.ribbonByTicket ? <div style={{ background: band, color: "#FFFFFF", textAlign: "center", fontSize: 12, fontWeight: 800, letterSpacing: "0.12em", padding: "6px 0" }}>SPEAKER</div> : null}
+      {badge.ribbonByTicket ? <div style={{ background: band, color: readableOn(band), textAlign: "center", fontSize: 12, fontWeight: 800, letterSpacing: "0.12em", padding: "6px 0" }}>SPEAKER</div> : null}
     </div>
   );
 }
-

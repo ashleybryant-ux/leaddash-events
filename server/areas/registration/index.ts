@@ -3,6 +3,7 @@
  * and embed), Stripe Connect payments on the organization's own account, and
  * the welcome email with its follow-ups.
  */
+import { lookOf } from "@shared/brand";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { and, desc, eq, inArray } from "drizzle-orm";
@@ -102,7 +103,7 @@ function publicEventInfo(ev: typeof schema.events.$inferSelect) {
     city: ev.city,
     status: ev.status,
     orgName: org.name,
-    branding: { colorPrimary: ev.branding.colorPrimary, colorAccent: ev.branding.colorAccent },
+    branding: { colorPrimary: ev.branding.colorPrimary, colorAccent: ev.branding.colorAccent, ...lookOf(ev.branding) },
     logoUrl: fileUrl(ev.branding.logoFileId ?? org.logoFileId),
   };
 }

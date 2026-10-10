@@ -12,6 +12,7 @@ import { PageLoading, ErrorNote } from "../ui/components";
 import { IconBack, IconBookmark, IconCalendar, IconCommunity, IconGrid, IconMessage } from "../ui/icons";
 import { SignIn } from "../core/SignIn";
 import { fmtDates } from "@shared/format";
+import { fontHref, lookOf, themeVars, type BrandLike } from "@shared/brand";
 
 type PublicEvent = RouterOutputs["core"]["events"]["publicBySlug"];
 type Me = RouterOutputs["core"]["events"]["me"];
@@ -25,9 +26,27 @@ export function useEventApp() {
   return ctx;
 }
 
-/** CSS variables for an event's colors. */
-export function brandStyle(branding: { colorPrimary: string; colorAccent: string }): CSSProperties {
-  return { ["--brand" as string]: branding.colorPrimary, ["--accent" as string]: branding.colorAccent } as CSSProperties;
+/** Adds the stylesheet for an event font once (Plus Jakarta Sans is already loaded by index.html). */
+export function loadBrandFont(branding: Partial<BrandLike>) {
+  if (typeof document === "undefined") return;
+  const font = lookOf(branding).font;
+  const href = fontHref(font);
+  if (!href || document.getElementById(`brand-font-${font}`)) return;
+  const link = document.createElement("link");
+  link.id = `brand-font-${font}`;
+  link.rel = "stylesheet";
+  link.href = href;
+  document.head.appendChild(link);
+}
+
+/**
+ * CSS variables for an event's look: colors, button text and shape, font,
+ * page background, text size and header style. Put on the root of every
+ * attendee-facing page.
+ */
+export function brandStyle(branding: BrandLike, coverUrl?: string | null): CSSProperties {
+  loadBrandFont(branding);
+  return themeVars(branding, coverUrl) as CSSProperties;
 }
 
 /** Points the browser at this event's install manifest (name, icon, start page). */
@@ -63,7 +82,7 @@ export function EventApp({ slug, children }: { slug: string; children: ReactNode
 
   if (!auth.data) {
     return (
-      <div className="app" style={brandStyle(ev.branding)}>
+      <div className="app" style={brandStyle(ev.branding, ev.coverUrl)}>
         <EventCoverHeader event={ev} />
         <div className="app-body">
           <SignIn title="Sign in to the app" eventName={ev.shortName} />
@@ -80,7 +99,7 @@ export function EventApp({ slug, children }: { slug: string; children: ReactNode
   const isStaff = m.staff.admin || Object.values(m.staff.areas).some((v) => v !== "none") || m.staff.kinds.length > 0;
   if (!m.attendee && !isStaff) {
     return (
-      <div className="app" style={brandStyle(ev.branding)}>
+      <div className="app" style={brandStyle(ev.branding, ev.coverUrl)}>
         <EventCoverHeader event={ev} />
         <div className="app-body">
           <h1 className="h2">You are not registered yet</h1>
@@ -95,7 +114,7 @@ export function EventApp({ slug, children }: { slug: string; children: ReactNode
   }
   if (ev.status === "draft" && !isStaff) {
     return (
-      <div className="app" style={brandStyle(ev.branding)}>
+      <div className="app" style={brandStyle(ev.branding, ev.coverUrl)}>
         <EventCoverHeader event={ev} />
         <div className="app-body">
           <h1 className="h2">The app opens soon</h1>
@@ -123,7 +142,7 @@ function EventCoverHeader({ event }: { event: PublicEvent }) {
       <div className="col gap-4">
         <div className="eyebrow">{event.orgName}</div>
         <div className="title">{event.name}</div>
-        <div className="small" style={{ color: "var(--side-text)" }}>
+        <div className="small" style={{ color: "var(--header-sub)" }}>
           {fmtDates(event.startDate, event.endDate)}
           {event.venueName ? ` · ${event.venueName}` : ""}
         </div>
@@ -166,7 +185,7 @@ export function BackBar({ title, back, right }: { title: ReactNode; back?: strin
 export function AppScreen({ nav, header, footer, children, bodyStyle }: { nav?: NavKey; header?: ReactNode; footer?: ReactNode; children: ReactNode; bodyStyle?: CSSProperties }) {
   const { event } = useEventApp();
   return (
-    <div className="app" style={brandStyle(event.branding)}>
+    <div className="app" style={brandStyle(event.branding, event.coverUrl)}>
       {header}
       <main className="app-body" style={bodyStyle}>
         {children}

@@ -105,7 +105,7 @@ export function useEmbedHeight(enabled: boolean) {
 /** Numbered step (the green circle with a number). */
 export function StepNumber({ n, size = 24 }: { n: number; size?: number }) {
   return (
-    <span style={{ width: size, height: size, flexShrink: 0, borderRadius: size / 2, background: "var(--brand)", color: "#FFFFFF", fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <span style={{ width: size, height: size, flexShrink: 0, borderRadius: size / 2, background: "var(--brand)", color: "var(--on-brand)", fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>
       {n}
     </span>
   );

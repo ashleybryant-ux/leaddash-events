@@ -243,7 +243,7 @@ export function ChatScreen({ threadId }: { threadId: number }) {
                     alignSelf: m.mine ? "flex-end" : "flex-start",
                     maxWidth: "78%",
                     background: m.mine ? "var(--brand)" : "#FFFFFF",
-                    color: m.mine ? "#FFFFFF" : "var(--ink)",
+                    color: m.mine ? "var(--on-brand)" : "var(--ink)",
                     border: m.mine ? "none" : "1px solid var(--line)",
                     borderRadius: m.mine ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
                     padding: "10px 12px",

@@ -1,6 +1,7 @@
 /* LeadDash Events design system. Matches the approved mockups:
    Plus Jakarta Sans, ground #F8FAFB, ink #0F2A23, green #1F5F4A, orange CTA #e88a3a.
-   --brand and --accent are set per event (branding) on the shell root. */
+   Each event's look (colors, header, button shape, font, background, text size)
+   is set as CSS variables on the root of attendee-facing pages (shared/brand.ts). */
 :root {
   --brand: #1F5F4A;
   --brand-dark: #164636;
@@ -9,6 +10,7 @@
   --brand-tint-2: #F4F8F6;
   --accent: #e88a3a;
   --accent-ink: #1A1206;
+  --on-brand: #FFFFFF;
   --ink: #0F2A23;
   --ink-2: #24433A;
   --muted: #4B5B57;
@@ -73,8 +75,8 @@ h1, h2, h3 { margin: 0; }
 .btn:disabled { opacity: 0.55; cursor: default; }
 .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 800; }
 .btn-primary:hover { background: var(--accent); filter: brightness(0.96); color: var(--accent-ink); }
-.btn-solid { background: var(--brand); color: #FFFFFF; border-color: var(--brand); }
-.btn-solid:hover { background: var(--brand-dark); color: #FFFFFF; }
+.btn-solid { background: var(--brand); color: var(--on-brand); border-color: var(--brand); }
+.btn-solid:hover { background: var(--brand-dark); color: var(--on-brand); }
 .btn-ghost { border-color: transparent; background: transparent; }
 .btn-danger { border-color: var(--bad-ink); color: var(--bad-ink); }
 .btn-sm { height: 34px; padding: 0 14px; border-radius: 8px; font-size: 13px; }
@@ -139,21 +141,23 @@ h1, h2, h3 { margin: 0; }
 .folder-body { background: #FFFFFF; border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 18px; }
 
 /* Segmented control (attendee app headers). */
-.segmented { padding: 4px; border-radius: 12px; background: var(--brand-mid); display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; }
-.segmented a, .segmented button { height: 36px; border-radius: 9px; color: #FFFFFF; font-size: 14px; font-weight: 600; text-decoration: none; display: flex; align-items: center; justify-content: center; border: none; background: transparent; cursor: pointer; }
-.segmented [aria-selected="true"] { background: #FFFFFF; color: var(--ink); font-weight: 800; }
+.segmented { padding: 4px; border-radius: 12px; background: var(--seg-bg, var(--brand-mid)); display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; }
+.segmented a, .segmented button { height: 36px; border-radius: 9px; color: var(--seg-ink, #FFFFFF); font-size: 14px; font-weight: 600; text-decoration: none; display: flex; align-items: center; justify-content: center; border: none; background: transparent; cursor: pointer; }
+.segmented [aria-selected="true"] { background: var(--pick-bg, #FFFFFF); color: var(--pick-ink, var(--ink)); font-weight: 800; }
 .chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
 .chip { flex-shrink: 0; height: 34px; padding: 0 14px; border-radius: 17px; border: 1px solid var(--line); background: #FFFFFF; color: var(--ink); font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; cursor: pointer; text-decoration: none; }
-.chip[aria-selected="true"] { background: var(--brand); border-color: var(--brand); color: #FFFFFF; }
+.chip[aria-selected="true"] { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
 
 /* ---------- Attendee app (phone layout) ---------- */
-.app { min-height: 100dvh; max-width: 480px; margin: 0 auto; background: var(--ground); display: flex; flex-direction: column; position: relative; }
+.app { min-height: 100dvh; max-width: 480px; margin: 0 auto; background: var(--app-bg, var(--ground)); font-family: var(--app-font, var(--font)); display: flex; flex-direction: column; position: relative; }
+.app .btn { border-radius: var(--btn-radius, 10px); }
 @media (min-width: 520px) { .app { border-left: 1px solid var(--line); border-right: 1px solid var(--line); } }
-.app-header { background: var(--brand); color: #FFFFFF; padding: calc(20px + env(safe-area-inset-top)) 20px 18px; display: flex; flex-direction: column; gap: 14px; }
+.app-header { background-color: var(--header-bg, var(--brand)); background-image: var(--header-image, none); background-size: cover; background-position: center; border-bottom: 3px solid var(--header-border, transparent); color: var(--header-ink, #FFFFFF); padding: calc(20px + env(safe-area-inset-top)) 20px 18px; display: flex; flex-direction: column; gap: 14px; }
+.app-header .eyebrow { color: var(--header-sub, var(--side-text)); }
 .app-header .title { font-size: 22px; font-weight: 800; }
 .app-bar { background: #FFFFFF; border-bottom: 1px solid var(--line); padding: calc(12px + env(safe-area-inset-top)) 12px 12px; display: flex; align-items: center; gap: 8px; position: sticky; top: 0; z-index: 5; }
 .app-bar .title { font-size: 16px; font-weight: 700; }
-.app-body { flex: 1; padding: 16px 16px 24px; display: flex; flex-direction: column; gap: 12px; }
+.app-body { flex: 1; padding: 16px 16px 24px; display: flex; flex-direction: column; gap: 12px; zoom: var(--app-zoom, 1); }
 .app-footer { position: sticky; bottom: 0; background: #FFFFFF; border-top: 1px solid var(--line); padding: 12px 16px calc(20px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 8px; z-index: 5; }
 .bottom-nav { position: sticky; bottom: 0; height: calc(76px + env(safe-area-inset-bottom)); background: #FFFFFF; border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); padding-bottom: calc(8px + env(safe-area-inset-bottom)); z-index: 5; }
 .bottom-nav a { position: relative; text-decoration: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--muted); font-size: 12px; font-weight: 600; }
@@ -199,7 +203,8 @@ h1, h2, h3 { margin: 0; }
 .wordmark-text span { font-size: 11px; font-weight: 800; letter-spacing: 0.16em; color: var(--accent); }
 
 /* ---------- Public pages ---------- */
-.public { min-height: 100dvh; max-width: 480px; margin: 0 auto; background: var(--ground); display: flex; flex-direction: column; }
+.public { min-height: 100dvh; max-width: 480px; margin: 0 auto; background: var(--app-bg, var(--ground)); font-family: var(--app-font, var(--font)); display: flex; flex-direction: column; }
+.public .btn { border-radius: var(--btn-radius, 10px); }
 .cover { position: relative; height: 210px; background: linear-gradient(135deg, var(--brand), var(--side)); background-size: cover; background-position: center; }
 .steps { display: flex; gap: 6px; }
 .steps > div { flex: 1; display: flex; flex-direction: column; gap: 4px; }

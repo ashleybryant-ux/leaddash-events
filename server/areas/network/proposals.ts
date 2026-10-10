@@ -124,7 +124,7 @@ const proposalInput = z.object({
 
 function brandEmail(event: Event, title: string, blocks: string[]) {
   const org = getDb().select().from(schema.organizations).where(eq(schema.organizations.id, event.orgId)).get()!;
-  return { html: emailLayout({ brand: event.branding.colorPrimary, accent: event.branding.colorAccent, coverUrl: fileUrl(event.branding.coverFileId, true), title, blocks, footer: escapeHtml(org.name) }), orgName: org.name };
+  return { html: emailLayout({ brand: event.branding.colorPrimary, accent: event.branding.colorAccent, look: event.branding, coverUrl: fileUrl(event.branding.coverFileId, true), title, blocks, footer: escapeHtml(org.name) }), orgName: org.name };
 }
 
 function decisionEmail(event: Event, p: Proposal, session: { date: string; startTime: string; room: string } | null) {
@@ -407,6 +407,7 @@ export const proposalsRouter = router({
       orgName: org.name,
       branding: event.branding,
       logoUrl: fileUrl(event.branding.logoFileId ?? org.logoFileId),
+      coverUrl: fileUrl(event.branding.coverFileId),
       intro: s.intro,
       opensOn: s.opensOn,
       closesOn: s.closesOn,
@@ -451,7 +452,7 @@ export const proposalsRouter = router({
       `<p>Hello ${escapeHtml(input.name)},</p>`,
       `<p>Thank you for submitting "${escapeHtml(input.title)}" to ${escapeHtml(event.name)}.</p>`,
       `<p>${s.closesOn ? `Proposals are due ${escapeHtml(fmtDate(s.closesOn))}. ` : ""}We will email you when decisions are made.</p>`,
-      emailButton("See your proposals", `${ENV.appUrl}/cfp/${event.slug}`, event.branding.colorAccent),
+      emailButton("See your proposals", `${ENV.appUrl}/cfp/${event.slug}`, event.branding),
     ]);
     await sendEmail({
       to: p.email,

@@ -158,7 +158,7 @@ export function renderEmail(t: TemplateDraft, c: Ctx) {
     text.push(`${c.ticketName}: ${fmtMoney(c.amountCents)}\n${where}`);
   }
   if (inc.getApp) {
-    blocks.push(emailButton("Get the app", appLink(ev.slug), accent));
+    blocks.push(emailButton("Get the app", appLink(ev.slug), { ...ev.branding, colorAccent: accent }));
     blocks.push(`<p style="margin:0 0 12px;font-size:13px;color:#4B5B57">iPhone: open the link in Safari, tap Share, then Add to Home Screen. Android: tap Install.</p>`);
     text.push(`Get the app: ${appLink(ev.slug)}\niPhone: open the link in Safari, tap Share, then Add to Home Screen. Android: tap Install.`);
   }
@@ -177,7 +177,7 @@ export function renderEmail(t: TemplateDraft, c: Ctx) {
     blocks.push(`<p style="margin:0 0 12px;font-size:13px"><a href="${escapeHtml(inc.hotelUrl)}" style="color:${brand};font-weight:bold">Book the hotel block</a></p>`);
     text.push(`Book the hotel block: ${inc.hotelUrl}`);
   }
-  const html = emailLayout({ brand, accent, coverUrl: coverFor(ev), blocks });
+  const html = emailLayout({ brand, accent, coverUrl: coverFor(ev), blocks, look: ev.branding });
   return { subject, text: text.join("\n\n"), html };
 }
 

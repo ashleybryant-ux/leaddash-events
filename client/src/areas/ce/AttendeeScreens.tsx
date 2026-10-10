@@ -93,7 +93,7 @@ export function SessionCheckIn({ sessionId }: { sessionId: number }) {
         </div>
       ) : (
         <div style={{ background: "var(--brand-tint)", border: "1px solid #A9CBBD", borderRadius: 16, padding: 16, display: "flex", gap: 12, alignItems: "flex-start" }}>
-          <div style={{ width: 40, height: 40, flexShrink: 0, borderRadius: 20, background: "var(--brand)", color: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ width: 40, height: 40, flexShrink: 0, borderRadius: 20, background: "var(--brand)", color: "var(--on-brand)", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <IconCheck />
           </div>
           <div className="col" style={{ gap: 4 }}>
@@ -138,7 +138,7 @@ const ratingBtn = (on: boolean) =>
     background: on ? "var(--brand)" : "#FFFFFF",
     fontSize: 15,
     fontWeight: on ? 800 : 700,
-    color: on ? "#FFFFFF" : "var(--ink)",
+    color: on ? "var(--on-brand)" : "var(--ink)",
     cursor: "pointer",
   }) as const;
 
@@ -494,7 +494,7 @@ export function MyBadgeScreen() {
       {b ? (
         <>
           <div className="card" style={{ borderRadius: 20, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "center" }}>
-            <div style={{ width: "100%", background: "var(--brand)", color: "#FFFFFF", padding: "14px 18px", display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: "100%", background: "var(--brand)", color: "var(--on-brand)", padding: "14px 18px", display: "flex", alignItems: "center", gap: 10 }}>
               {b.logoUrl ? <img src={b.logoUrl} alt="" style={{ width: 32, height: 32, borderRadius: 8, background: "#FFFFFF", objectFit: "contain" }} /> : null}
               <div className="xstrong" style={{ fontSize: 14 }}>{b.eventName}</div>
             </div>

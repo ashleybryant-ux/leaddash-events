@@ -104,6 +104,7 @@ describe("registration", () => {
     const pub = caller(null);
     const page = await pub.registration.page({ slug: event.slug });
     expect(page.tickets.map((t) => t.name)).toEqual(["Nonmember"]);
+    expect(page.event.branding).toMatchObject({ header: "solid", buttonShape: "rounded", font: "jakarta" });
     const res = await pub.registration.start({ slug: event.slug, ticketId: nonmember.id, buyer: buyer("Jordan@Example.com") });
     expect(res.kind).toBe("free");
     const attendee = getDb().select().from(schema.attendees).where(eq(schema.attendees.eventId, event.id)).get()!;

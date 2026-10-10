@@ -104,5 +104,6 @@ export function eventMailStyle(ev: EventRow) {
     accent: ev.branding.colorAccent,
     coverUrl: fileUrl(ev.branding.coverFileId, true),
     fromName: ev.shortName || ev.name,
+    look: ev.branding,
   };
 }

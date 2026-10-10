@@ -10,6 +10,7 @@ import { fileUrl } from "../../_core/files";
 import { randomToken, safeEqual } from "../../_core/crypto";
 import { ENV } from "../../_core/env";
 import { fmtTime } from "@shared/format";
+import { lookOf } from "@shared/brand";
 import { dateToZoned } from "@shared/time";
 import { attendeeName, badRequest, evaluationWindow, formForSession, getAttendee, getSession, issueEligible, sessionTimes, userNames } from "./shared";
 
@@ -50,6 +51,7 @@ export function badgeData(ev: typeof schema.events.$inferSelect, a: Attendee) {
     eventName: ev.name,
     colorPrimary: ev.branding.colorPrimary,
     colorAccent: ev.branding.colorAccent,
+    font: lookOf(ev.branding).font,
     logoUrl: fileUrl(ev.branding.logoFileId ?? org?.logoFileId),
   };
 }

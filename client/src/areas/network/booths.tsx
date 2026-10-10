@@ -466,7 +466,7 @@ export function LeadScanScreen() {
                       type="button"
                       aria-pressed={rating === r}
                       onClick={() => setRating(r)}
-                      style={{ height: 38, borderRadius: 9, border: rating === r ? "1.5px solid var(--brand)" : "1px solid #D5DEDA", background: rating === r ? "var(--brand)" : "#FFFFFF", color: rating === r ? "#FFFFFF" : "var(--ink)", fontSize: 13, fontWeight: rating === r ? 800 : 700, cursor: "pointer" }}
+                      style={{ height: 38, borderRadius: 9, border: rating === r ? "1.5px solid var(--brand)" : "1px solid #D5DEDA", background: rating === r ? "var(--brand)" : "#FFFFFF", color: rating === r ? "var(--on-brand)" : "var(--ink)", fontSize: 13, fontWeight: rating === r ? 800 : 700, cursor: "pointer" }}
                     >
                       {r[0].toUpperCase() + r.slice(1)}
                     </button>

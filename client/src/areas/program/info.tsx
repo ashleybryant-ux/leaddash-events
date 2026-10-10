@@ -337,12 +337,12 @@ export function HostScreen() {
   if (h.email) contacts.push({ key: "e", icon: <IconMessage size={18} />, text: h.email, href: `mailto:${h.email}` });
   if (h.phone) contacts.push({ key: "p", icon: <IconHelp size={18} />, text: h.phone, href: `tel:${h.phone.replace(/[^\d+]/g, "")}` });
   for (const s of socials) contacts.push({ key: s.label, icon: <IconPeople size={18} />, text: s.label, href: s.url });
-  const buttons = [h.joinUrl ? <a key="j" href={h.joinUrl} className="btn btn-primary" style={{ height: 46, borderRadius: 12 }}>Join or renew</a> : null, h.website ? <a key="w" href={h.website} target="_blank" rel="noreferrer" className="btn" style={{ height: 46, borderRadius: 12 }}>Website</a> : null].filter(Boolean);
+  const buttons = [h.joinUrl ? <a key="j" href={h.joinUrl} className="btn btn-primary" style={{ height: 46 }}>Join or renew</a> : null, h.website ? <a key="w" href={h.website} target="_blank" rel="noreferrer" className="btn" style={{ height: 46 }}>Website</a> : null].filter(Boolean);
   return (
     <AppScreen nav="more" header={<TopBar title="About your host" />} bodyStyle={{ padding: "22px 18px 24px", gap: 16 }}>
       <div className="col" style={{ alignItems: "center", gap: 10, textAlign: "center" }}>
         <div style={{ width: 88, height: 88, borderRadius: 22, background: h.imageUrl ? "#FFFFFF" : "var(--brand)", border: h.imageUrl ? "1px solid var(--line)" : "none", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-          {h.imageUrl ? <img src={h.imageUrl} alt={`${h.name} logo`} style={{ width: "84%", height: "84%", objectFit: "contain" }} /> : <IconInfo size={36} color="#FFFFFF" />}
+          {h.imageUrl ? <img src={h.imageUrl} alt={`${h.name} logo`} style={{ width: "84%", height: "84%", objectFit: "contain" }} /> : <IconInfo size={36} color="var(--on-brand)" />}
         </div>
         <div style={{ fontSize: 20, fontWeight: 800, lineHeight: 1.25 }}>{h.name}</div>
       </div>
@@ -403,12 +403,12 @@ export function HelpScreen() {
         </div>
         <div className={d.desk.phone && d.registered ? "grid-2" : "col"} style={{ gap: 8 }}>
           {d.registered ? (
-            <button type="button" className="btn btn-primary" style={{ height: 44, borderRadius: 12 }} onClick={() => setAsking(true)}>
+            <button type="button" className="btn btn-primary" style={{ height: 44 }} onClick={() => setAsking(true)}>
               Message us
             </button>
           ) : null}
           {d.desk.phone ? (
-            <a href={`tel:${d.desk.phone.replace(/[^\d+]/g, "")}`} className="btn" style={{ height: 44, borderRadius: 12 }}>
+            <a href={`tel:${d.desk.phone.replace(/[^\d+]/g, "")}`} className="btn" style={{ height: 44 }}>
               Call
             </a>
           ) : null}

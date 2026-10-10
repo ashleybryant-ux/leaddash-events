@@ -59,7 +59,7 @@ async function tellAttendee(ev: EventRow, a: AttendeeRow, notice: { title: strin
     subject: notice.title,
     text: `${notice.body}\n\n${ENV.appUrl}${url}`,
     fromName: style.fromName,
-    html: emailLayout({ ...style, title: notice.title, blocks: [`<p>${escapeHtml(notice.body).replace(/\n/g, "<br>")}</p>`, emailButton("Open the app", ENV.appUrl + url, style.accent)] }),
+    html: emailLayout({ ...style, title: notice.title, blocks: [`<p>${escapeHtml(notice.body).replace(/\n/g, "<br>")}</p>`, emailButton("Open the app", ENV.appUrl + url, style.look)] }),
   });
 }
 

@@ -72,11 +72,12 @@ async function sendStaffInvite(role: Role, user: { email: string; name: string }
     html: emailLayout({
       brand: ev.branding.colorPrimary,
       accent: ev.branding.colorAccent,
+      look: ev.branding,
       title: `You are on the team for ${ev.shortName || ev.name}`,
       blocks: [
         `<p>You were added as <b>${escapeHtml(role.name)}</b> for ${escapeHtml(ev.name)}.</p>`,
         `<p>Sign in with ${escapeHtml(user.email)}. We will email you a six-digit code.</p>`,
-        emailButton("Sign in", link, ev.branding.colorAccent),
+        emailButton("Sign in", link, ev.branding),
       ],
     }),
   });

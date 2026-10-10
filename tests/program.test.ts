@@ -211,6 +211,27 @@ describe("program", () => {
     expect(host.joinUrl).toMatch(/^\/m\//);
     expect((await api.program.dining.list({ slug: event.slug })).menu).toEqual([]);
   });
+  it("saves the app look, keeps it when left out, and shows it on attendee pages", async () => {
+    const { event, admin } = await liveEvent();
+    const b = await admin.program.branding.get({ eventId: event.id });
+    expect(b.look).toEqual({ header: "solid", buttonShape: "rounded", font: "jakarta", buttonText: "auto", background: "gray", textSize: "standard" });
+    const look = { header: "light" as const, buttonShape: "pill" as const, font: "lora" as const, buttonText: "dark" as const, background: "white" as const, textSize: "larger" as const };
+    const rest = { eventId: event.id, appName: "", logoFileId: null, coverFileId: null, iconFileId: null, badge: { ...b.badge, nameStyle: "first" as const, showQr: true }, features: b.features };
+    await admin.program.branding.update({ ...rest, colorPrimary: "#5B2A6E", colorAccent: "#E2B33C", look });
+    expect((await admin.program.branding.get({ eventId: event.id })).look).toEqual(look);
+
+    // An older screen that does not send the look leaves it alone.
+    await admin.program.branding.update({ ...rest, colorPrimary: "#5B2A6E", colorAccent: "#E2B33C" });
+    expect((await admin.program.branding.get({ eventId: event.id })).look).toEqual(look);
+    await expect(admin.program.branding.update({ ...rest, colorPrimary: "#5B2A6E", colorAccent: "#E2B33C", look: { ...look, font: "comic" as never } })).rejects.toThrow();
+
+    const { api } = addAttendee(event.id, "a@example.com");
+    const pub = await api.core.events.publicBySlug({ slug: event.slug });
+    expect(pub.branding).toMatchObject({ colorPrimary: "#5B2A6E", font: "lora", buttonShape: "pill", header: "light" });
+    const cfp = await api.network.proposals.info({ slug: event.slug });
+    expect(cfp.branding).toMatchObject({ font: "lora" });
+  });
+
   it("saves dining and badge band colors, and keeps attendees out of editing them", async () => {
     const { event, admin } = await liveEvent();
     const a = addAttendee(event.id, "a@example.com");

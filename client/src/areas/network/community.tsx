@@ -41,7 +41,7 @@ export function CommunityScreen() {
             ) : null}
           </div>
           {list.data?.canStart ? (
-            <Link href={`${base}/community/new`} className="btn btn-primary btn-block" style={{ height: 46, borderRadius: 12, fontSize: 15 }}>
+            <Link href={`${base}/community/new`} className="btn btn-primary btn-block" style={{ height: 46, fontSize: 15 }}>
               Start a discussion
             </Link>
           ) : null}
@@ -73,7 +73,7 @@ export function CommunityScreen() {
               <div key={c.id} className="tile">
                 <Link href={`${base}/community/${c.id}`} className="row grow" style={{ textDecoration: "none", color: "inherit", gap: 12 }}>
                   {c.official ? (
-                    <span style={{ width: 40, height: 40, flexShrink: 0, borderRadius: 12, background: "var(--brand)", color: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <span style={{ width: 40, height: 40, flexShrink: 0, borderRadius: 12, background: "var(--brand)", color: "var(--on-brand)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                       <IconCommunity size={20} />
                     </span>
                   ) : null}
@@ -122,7 +122,7 @@ function Author({ post, first }: { post: PostData | ReplyData; first?: boolean }
   if (post.byEvent || !post.author) {
     return (
       <div className="row" style={{ gap: 10 }}>
-        <span style={{ width: 38, height: 38, flexShrink: 0, borderRadius: 19, background: "var(--brand)", color: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ width: 38, height: 38, flexShrink: 0, borderRadius: 19, background: "var(--brand)", color: "var(--on-brand)", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <IconCommunity size={18} />
         </span>
         <span className="col" style={{ gap: 0 }}>

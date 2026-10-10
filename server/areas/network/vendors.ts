@@ -260,6 +260,7 @@ const adminRouter = router({
       html: emailLayout({
         brand: event.branding.colorPrimary,
         accent: event.branding.colorAccent,
+        look: event.branding,
         title: "Balance due",
         blocks: [`<p>Hello${v.contactName ? ` ${escapeHtml(v.contactName)}` : ""},</p>`, `<p>Here is the balance for ${escapeHtml(v.company)} at ${escapeHtml(event.name)}.</p>`, `<p>${lines.map(escapeHtml).join("<br>")}</p>`, `<p>Reply to this email with any questions.</p>`],
         footer: escapeHtml(org.name),

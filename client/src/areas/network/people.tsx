@@ -484,7 +484,7 @@ export function MeetingRequestScreen({ attendeeId }: { attendeeId: number }) {
               type="button"
               aria-pressed={t === time}
               onClick={() => setTime(t)}
-              style={{ height: 44, borderRadius: 10, border: t === time ? "1.5px solid var(--brand)" : "1px solid #D5DEDA", background: t === time ? "var(--brand)" : "#FFFFFF", color: t === time ? "#FFFFFF" : "var(--ink)", fontSize: 14, fontWeight: t === time ? 800 : 700, cursor: "pointer" }}
+              style={{ height: 44, borderRadius: 10, border: t === time ? "1.5px solid var(--brand)" : "1px solid #D5DEDA", background: t === time ? "var(--brand)" : "#FFFFFF", color: t === time ? "var(--on-brand)" : "var(--ink)", fontSize: 14, fontWeight: t === time ? 800 : 700, cursor: "pointer" }}
             >
               {fmtTime(t)}
             </button>

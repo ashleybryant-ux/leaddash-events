@@ -542,7 +542,7 @@ export function DoneScreen({ slug }: { slug: string }) {
             </div>
           </div>
         ) : null}
-        <a className="btn btn-block" style={{ height: 46, fontSize: 15, borderRadius: 12 }} href={`/r/${slug}/calendar.ics`}>
+        <a className="btn btn-block" style={{ height: 46, fontSize: 15 }} href={`/r/${slug}/calendar.ics`}>
           Add to calendar
         </a>
       </main>
@@ -673,16 +673,16 @@ export function GetAppScreen({ slug }: { slug: string }) {
   }
 
   return (
-    <div className="app" style={brandStyle(ev.branding)}>
-      <div style={{ background: "var(--brand)", color: "#FFFFFF", padding: "calc(28px + env(safe-area-inset-top)) 24px 26px", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, textAlign: "center" }}>
-        <div style={{ width: 76, height: 76, borderRadius: 20, background: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", padding: ev.logoUrl ? 8 : 0 }}>
+    <div className="app" style={brandStyle(ev.branding, ev.coverUrl)}>
+      <div style={{ backgroundColor: "var(--header-bg)", backgroundImage: "var(--header-image)", backgroundSize: "cover", backgroundPosition: "center", borderBottom: "3px solid var(--header-border)", color: "var(--header-ink)", padding: "calc(28px + env(safe-area-inset-top)) 24px 26px", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, textAlign: "center" }}>
+        <div style={{ width: 76, height: 76, borderRadius: 20, background: "#FFFFFF", border: "1px solid var(--logo-line)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", padding: ev.logoUrl ? 8 : 0 }}>
           {ev.logoUrl ? <img src={ev.logoUrl} alt="" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} /> : <img src="/icon-192.png" alt="" style={{ width: "100%", height: "100%" }} />}
         </div>
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, lineHeight: 1.25 }}>Get the {ev.name} app</h1>
-        <div style={{ fontSize: 14, color: "var(--side-text)" }}>{fmtDates(ev.startDate, ev.endDate)}</div>
+        <div style={{ fontSize: 14, color: "var(--header-sub)" }}>{fmtDates(ev.startDate, ev.endDate)}</div>
       </div>
       <main className="app-body" style={{ padding: "20px 18px 0", gap: 14 }}>
-        <button className="btn btn-primary btn-block" style={{ height: 54, borderRadius: 14, fontSize: 17 }} onClick={install}>
+        <button className="btn btn-primary btn-block" style={{ height: 54, fontSize: 17 }} onClick={install}>
           Install the app
         </button>
         <div className="small muted" style={{ textAlign: "center" }}>
@@ -704,7 +704,7 @@ export function GetAppScreen({ slug }: { slug: string }) {
             <span>Leave Open as Web App on, then tap Add</span>
           </div>
         </div>
-        <a className="btn btn-block" style={{ height: 46, borderRadius: 12 }} href={appHref}>
+        <a className="btn btn-block" style={{ height: 46 }} href={appHref}>
           Open the app
         </a>
         <div className="card" style={{ padding: 14, display: "flex", gap: 14, alignItems: "center" }}>

@@ -115,12 +115,12 @@ export function SpeakerSheet({ speakerId, onClose, showSessions = true }: { spea
           {s.messageAttendeeId || s.website ? (
             <div className="grid-2">
               {s.messageAttendeeId ? (
-                <Link href={`${base}/people/${s.messageAttendeeId}`} className="btn btn-primary" style={{ height: 46, borderRadius: 12 }}>
+                <Link href={`${base}/people/${s.messageAttendeeId}`} className="btn btn-primary" style={{ height: 46 }}>
                   Message
                 </Link>
               ) : null}
               {s.website ? (
-                <a href={s.website} target="_blank" rel="noreferrer" className="btn" style={{ height: 46, borderRadius: 12 }}>
+                <a href={s.website} target="_blank" rel="noreferrer" className="btn" style={{ height: 46 }}>
                   Website
                 </a>
               ) : null}

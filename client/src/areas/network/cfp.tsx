@@ -47,11 +47,11 @@ function Header({ info }: { info: Info }) {
   return (
     <header className="app-header">
       <div className="row" style={{ gap: 12 }}>
-        {info.logoUrl ? <img src={info.logoUrl} alt={`${info.orgName} logo`} style={{ width: 48, height: 48, objectFit: "contain", borderRadius: 10, background: "#FFFFFF", padding: 4 }} /> : null}
+        {info.logoUrl ? <img src={info.logoUrl} alt={`${info.orgName} logo`} style={{ width: 48, height: 48, objectFit: "contain", borderRadius: 10, background: "#FFFFFF", border: "1px solid var(--logo-line)", padding: 4 }} /> : null}
         <div className="col" style={{ gap: 2 }}>
           <div className="eyebrow">{info.orgName}</div>
           <div className="title">Call for proposals</div>
-          <div className="small" style={{ color: "var(--side-text)" }}>
+          <div className="small" style={{ color: "var(--header-sub)" }}>
             {info.eventName}
             {info.closesOn ? ` · Due ${fmtDate(info.closesOn)}` : ""}
           </div>
@@ -296,7 +296,7 @@ export function ProposalSubmitPage({ slug }: { slug: string }) {
   const opens = i.opensOn && new Date().toISOString().slice(0, 10) < i.opensOn;
 
   return (
-    <div className="app" style={brandStyle(i.branding)}>
+    <div className="app" style={brandStyle(i.branding, i.coverUrl)}>
       <Header info={i} />
       <main className="app-body" style={{ gap: 14 }}>
         {i.intro ? <p style={{ margin: 0, whiteSpace: "pre-wrap", color: "var(--ink-2)" }}>{i.intro}</p> : null}

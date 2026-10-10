@@ -103,7 +103,7 @@ export async function sendAnnouncement(id: number) {
           subject: a.title,
           text: `${a.body}\n\n${full}`,
           fromName: style.fromName,
-          html: emailLayout({ ...style, title: a.title, blocks: [`<p>${escapeHtml(a.body).replace(/\n/g, "<br>")}</p>`, emailButton("Open the app", full, style.accent)] }),
+          html: emailLayout({ ...style, title: a.title, blocks: [`<p>${escapeHtml(a.body).replace(/\n/g, "<br>")}</p>`, emailButton("Open the app", full, style.look)] }),
         });
       } catch (err) {
         console.error("[announcement] email failed:", (err as Error).message);

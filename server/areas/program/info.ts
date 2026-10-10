@@ -6,6 +6,7 @@ import { getDb, schema } from "../../_core/db";
 import { audit, notFound, requireEventAdmin } from "../../_core/access";
 import { fileUrl } from "../../_core/files";
 import type { EventBranding, HostLink } from "../../../drizzle/schema";
+import { LOOK_BACKGROUNDS, LOOK_BUTTON_TEXT, LOOK_FONTS, LOOK_HEADERS, LOOK_SHAPES, LOOK_TEXT_SIZES, lookOf } from "@shared/brand";
 import { attendeeViewer, bad, hex, hhmm, isoDate, url, viewer } from "./util";
 
 const DIETARY = ["V", "VG", "GF", "DF", "NF", "H", "K"] as const;
@@ -212,6 +213,7 @@ export const brandingRouter = router({
       appName: b.appName || ev.shortName || ev.name,
       colorPrimary: b.colorPrimary,
       colorAccent: b.colorAccent,
+      look: lookOf(b),
       logoFileId: b.logoFileId ?? null,
       logoUrl: fileUrl(b.logoFileId),
       coverFileId: b.coverFileId ?? null,
@@ -231,6 +233,17 @@ export const brandingRouter = router({
         appName: z.string().trim().max(60),
         colorPrimary: hex,
         colorAccent: hex,
+        /** How attendee-facing pages look. Left out by older screens: the saved look stays. */
+        look: z
+          .object({
+            header: z.enum(LOOK_HEADERS),
+            buttonShape: z.enum(LOOK_SHAPES),
+            font: z.enum(LOOK_FONTS),
+            buttonText: z.enum(LOOK_BUTTON_TEXT),
+            background: z.enum(LOOK_BACKGROUNDS),
+            textSize: z.enum(LOOK_TEXT_SIZES),
+          })
+          .optional(),
         logoFileId: z.number().int().nullable(),
         coverFileId: z.number().int().nullable(),
         iconFileId: z.number().int().nullable(),
@@ -255,6 +268,7 @@ export const brandingRouter = router({
         appName: input.appName,
         colorPrimary: input.colorPrimary,
         colorAccent: input.colorAccent,
+        ...lookOf(input.look ?? (ev.branding as BrandingExtra)),
         logoFileId: input.logoFileId,
         coverFileId: input.coverFileId,
         iconFileId: input.iconFileId,

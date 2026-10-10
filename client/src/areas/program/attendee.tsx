@@ -24,14 +24,14 @@ export function WelcomeScreen({ slug }: { slug: string }) {
   if (auth.data) return <Redirect to={`/e/${slug}/agenda`} />;
   const ev = event.data!;
   return (
-    <div className="app" style={{ ...brandStyle(ev.branding), background: "var(--brand)", color: "#FFFFFF" }}>
+    <div className="app" style={{ ...brandStyle(ev.branding, ev.coverUrl), backgroundColor: "var(--header-bg)", backgroundImage: "var(--header-image)", backgroundSize: "cover", backgroundPosition: "center", color: "var(--header-ink)" }}>
       <div className="col" style={{ flex: 1, padding: "64px 28px 32px", alignItems: "center", gap: 18, textAlign: "center" }}>
-        <div style={{ width: 112, height: 112, borderRadius: 28, background: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+        <div style={{ width: 112, height: 112, borderRadius: 28, background: "#FFFFFF", border: "1px solid var(--logo-line)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
           {ev.logoUrl ? <img src={ev.logoUrl} alt={`${ev.orgName} logo`} style={{ width: "80%", height: "80%", objectFit: "contain" }} /> : <span style={{ color: "var(--brand)", fontWeight: 800, fontSize: 22 }}>{ev.shortName.slice(0, 4)}</span>}
         </div>
         <div className="col" style={{ gap: 6 }}>
           <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1.2 }}>{ev.name}</div>
-          <div style={{ fontSize: 14, color: "var(--side-text)" }}>
+          <div style={{ fontSize: 14, color: "var(--header-sub)" }}>
             {fmtDates(ev.startDate, ev.endDate)}
             {ev.venueName ? ` · ${ev.venueName}` : ""}
           </div>
@@ -57,7 +57,7 @@ function todayIn(tz: string) {
   }
 }
 
-const headerBtn = { position: "relative" as const, width: 44, height: 44, borderRadius: 12, border: "1px solid rgba(255,255,255,0.28)", color: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center" };
+const headerBtn = { position: "relative" as const, width: 44, height: 44, borderRadius: 12, border: "1px solid var(--header-line)", color: "var(--header-ink)", display: "flex", alignItems: "center", justifyContent: "center" };
 
 function useAddToAgenda() {
   const { slug } = useEventApp();
@@ -126,7 +126,7 @@ export function AgendaScreen() {
     <header className="app-header" style={{ paddingBottom: 16 }}>
       <div className="row-between">
         <div className="row" style={{ gap: 10, minWidth: 0 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 10, background: "#FFFFFF", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: "#FFFFFF", border: "1px solid var(--logo-line)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
             {event.logoUrl ? <img src={event.logoUrl} alt={`${event.orgName} logo`} style={{ width: "84%", height: "84%", objectFit: "contain" }} /> : <span style={{ color: "var(--brand)", fontSize: 10, fontWeight: 800 }}>{event.shortName.slice(0, 4)}</span>}
           </div>
           <div className="col" style={{ gap: 2, minWidth: 0 }}>
@@ -156,9 +156,9 @@ export function AgendaScreen() {
               type="button"
               aria-pressed={on}
               onClick={() => setDay(d)}
-              style={{ height: 52, borderRadius: 12, border: on ? "none" : "1px solid rgba(255,255,255,0.28)", background: on ? "#FFFFFF" : "transparent", color: on ? "var(--ink)" : "#FFFFFF", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, cursor: "pointer" }}
+              style={{ height: 52, borderRadius: 12, border: on ? "none" : "1px solid var(--header-line)", background: on ? "var(--pick-bg)" : "transparent", color: on ? "var(--pick-ink)" : "var(--header-ink)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, cursor: "pointer" }}
             >
-              <span style={{ fontSize: 12, fontWeight: 600, color: on ? "var(--muted)" : "var(--side-text)" }}>{fmtDayDate(d).slice(0, 3)}</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: on ? "var(--pick-ink)" : "var(--header-sub)", opacity: on ? 0.75 : 1 }}>{fmtDayDate(d).slice(0, 3)}</span>
               <span style={{ fontSize: days.length > 3 ? 13 : 15, fontWeight: on ? 800 : 700 }}>{fmtDate(d)}</span>
             </button>
           );
@@ -213,7 +213,7 @@ export function AgendaScreen() {
                 ) : null}
               </Link>
               {!me.attendee ? null : s.onMy ? (
-                <div role="img" aria-label="On My agenda" style={{ width: 44, height: 44, flexShrink: 0, borderRadius: 12, background: "var(--brand)", color: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div role="img" aria-label="On My agenda" style={{ width: 44, height: 44, flexShrink: 0, borderRadius: 12, background: "var(--brand)", color: "var(--on-brand)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <IconCheck size={20} />
                 </div>
               ) : (
@@ -310,12 +310,12 @@ export function MyAgendaScreen() {
                     </div>
                   ) : null}
                   {i.evaluationOpen ? (
-                    <Link href={`${base}/eval/${i.id}`} className="btn btn-primary btn-block" style={{ height: 44, borderRadius: 12 }}>
+                    <Link href={`${base}/eval/${i.id}`} className="btn btn-primary btn-block" style={{ height: 44 }}>
                       Take evaluation
                     </Link>
                   ) : null}
                   {i.canCheckIn ? (
-                    <Link href={`${base}/checkin/${i.id}`} className="btn btn-block" style={{ height: 44, borderRadius: 12 }}>
+                    <Link href={`${base}/checkin/${i.id}`} className="btn btn-block" style={{ height: 44 }}>
                       Check in
                     </Link>
                   ) : null}
@@ -411,7 +411,7 @@ export function SessionScreen({ sessionId }: { sessionId: number }) {
             <div className="strong" style={{ fontSize: 14 }}>{p.name}</div>
             <div className="muted" style={{ fontSize: 13 }}>{ROLE_LABEL[p.role] ?? p.role}</div>
           </div>
-          <button type="button" className="btn btn-sm" style={{ width: 84, height: 36, borderRadius: 10 }} onClick={() => setBio(p.id)}>
+          <button type="button" className="btn btn-sm" style={{ width: 84, height: 36 }} onClick={() => setBio(p.id)}>
             Bio
           </button>
         </div>
@@ -423,7 +423,7 @@ export function SessionScreen({ sessionId }: { sessionId: number }) {
             const current = !st.done && steps.slice(0, i).every((x) => x.done);
             return (
               <div key={i} className="row" style={{ gap: 10 }}>
-                <div style={{ width: 28, height: 28, flexShrink: 0, borderRadius: 14, fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", ...(st.done || current ? { background: "var(--brand)", color: "#FFFFFF" } : { border: "1.5px solid #9DB3AB", color: "var(--muted)" }) }}>
+                <div style={{ width: 28, height: 28, flexShrink: 0, borderRadius: 14, fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", ...(st.done || current ? { background: "var(--brand)", color: "var(--on-brand)" } : { border: "1.5px solid #9DB3AB", color: "var(--muted)" }) }}>
                   {st.done ? <IconCheck size={14} /> : i + 1}
                 </div>
                 <div style={{ fontSize: 14, color: st.done || current ? "var(--ink)" : "var(--muted)" }}>{st.label}</div>

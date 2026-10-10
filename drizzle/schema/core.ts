@@ -1,3 +1,4 @@
+import type { Look } from "../../shared/brand";
 import { sqliteTable, integer, text, index, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
 
@@ -71,7 +72,7 @@ export const orgMembers = sqliteTable(
   (t) => [uniqueIndex("org_members_unique").on(t.orgId, t.userId)]
 );
 
-export type EventBranding = {
+export type EventBranding = Partial<Look> & {
   colorPrimary: string;
   colorAccent: string;
   logoFileId?: number | null;

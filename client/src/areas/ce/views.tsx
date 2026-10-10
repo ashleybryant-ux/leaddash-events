@@ -6,6 +6,8 @@ import type { ReactNode } from "react";
 import { QR } from "../../ui/components";
 import { fmtHours } from "@shared/format";
 import { useCertificateFonts } from "./util";
+import { FONTS, readableOn, type LookFont } from "@shared/brand";
+import { loadBrandFont } from "../../shells/AttendeeShell";
 
 export type CertData = {
   certificateTitle: string;
@@ -121,11 +123,15 @@ export type BadgeData = {
   eventName: string;
   colorPrimary: string;
   logoUrl: string | null;
+  /** The event's font (App look). */
+  font?: LookFont;
 };
 
 /** The printed badge: 4 x 3 (landscape) or 4 x 6 (portrait) inches. */
 export function BadgeView({ b, extra }: { b: BadgeData; extra?: ReactNode }) {
   const tall = b.size === "4x6";
+  const font = b.font && FONTS[b.font] ? b.font : "jakarta";
+  loadBrandFont({ font });
   const last = [b.lastName, b.credentials].filter(Boolean).join(", ");
   const details = (
     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "1.2cqw", textAlign: tall ? "center" : "left" }}>
@@ -137,8 +143,8 @@ export function BadgeView({ b, extra }: { b: BadgeData; extra?: ReactNode }) {
   );
   return (
     <div className="ce-badge" style={{ containerType: "inline-size", width: "100%" }}>
-      <div style={{ width: "100%", aspectRatio: tall ? "4 / 6" : "4 / 3", boxSizing: "border-box", background: "#FFFFFF", display: "flex", flexDirection: "column", overflow: "hidden", fontFamily: "var(--font)", color: "var(--ink)" }}>
-        <div style={{ background: b.colorPrimary, color: "#FFFFFF", padding: "3cqw 4.5cqw", display: "flex", alignItems: "center", gap: "2.5cqw" }}>
+      <div style={{ width: "100%", aspectRatio: tall ? "4 / 6" : "4 / 3", boxSizing: "border-box", background: "#FFFFFF", display: "flex", flexDirection: "column", overflow: "hidden", fontFamily: FONTS[font].css, color: "var(--ink)" }}>
+        <div style={{ background: b.colorPrimary, color: readableOn(b.colorPrimary), padding: "3cqw 4.5cqw", display: "flex", alignItems: "center", gap: "2.5cqw" }}>
           {b.logoUrl ? <img src={b.logoUrl} alt="" style={{ height: "8cqw", maxWidth: "22cqw", objectFit: "contain", background: "#FFFFFF", borderRadius: "2cqw", padding: "0.6cqw" }} /> : null}
           <span style={{ fontSize: "4cqw", fontWeight: 800 }}>{b.eventName}</span>
         </div>
