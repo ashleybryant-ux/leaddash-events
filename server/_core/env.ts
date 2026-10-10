@@ -35,12 +35,18 @@ export const ENV = {
   // Stripe (LeadDash's platform account; each association connects its own account to it)
   stripeSecret: process.env.STRIPE_SECRET_KEY || "",
   stripePublishable: process.env.STRIPE_PUBLISHABLE_KEY || "",
+  /** Connect client id (ca_...), the same LeadDash platform account and Connect app LeadDash EHR uses. */
+  stripeConnectClientId: process.env.STRIPE_CONNECT_CLIENT_ID || "",
+  /** Where Stripe sends the association back after "Connect with Stripe". Must be listed in the Connect settings' redirect URIs. */
+  stripeConnectRedirect: process.env.STRIPE_CONNECT_REDIRECT_URI || "",
   /** Signing secret of the Connect webhook (events from connected accounts). */
   stripeConnectWebhookSecret: process.env.STRIPE_CONNECT_WEBHOOK_SECRET || "",
   /** LeadDash fee per paid ticket, in cents (0 = none). */
   platformFeeCents: parseInt(process.env.PLATFORM_FEE_CENTS || "0", 10),
   /** LeadDash fee as a percent of each paid ticket (0 = none). Added to PLATFORM_FEE_CENTS. */
   platformFeePercent: parseFloat(process.env.PLATFORM_FEE_PERCENT || "0"),
+  /** Give LeadDash's fee back in proportion on refunds (off by default, like LeadDash EHR). */
+  platformFeeRefund: (process.env.PLATFORM_FEE_REFUND || "").toLowerCase() === "true",
 
   // LeadDash platform (GoHighLevel) marketplace app, the same app LeadDash EHR uses
   ghlClientId: process.env.GHL_CLIENT_ID || "",

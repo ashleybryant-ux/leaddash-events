@@ -11,8 +11,8 @@ import { ENV } from "../../_core/env";
 
 /** The parts of the Stripe client this area uses (so tests can hand in a small fake). */
 export type StripeLike = {
-  accounts: Pick<Stripe["accounts"], "create" | "retrieve" | "update" | "listExternalAccounts">;
-  accountLinks: Pick<Stripe["accountLinks"], "create">;
+  accounts: Pick<Stripe["accounts"], "retrieve" | "update" | "listExternalAccounts">;
+  oauth: Pick<Stripe["oauth"], "token" | "deauthorize">;
   checkout: { sessions: Pick<Stripe["checkout"]["sessions"], "create" | "retrieve"> };
   refunds: Pick<Stripe["refunds"], "create">;
   webhooks: Pick<Stripe["webhooks"], "constructEvent">;

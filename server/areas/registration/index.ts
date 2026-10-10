@@ -14,7 +14,7 @@ import { fileUrl } from "../../_core/files";
 import { sendEmail } from "../../_core/email";
 import { MESSAGE_KINDS, type CheckoutQuestion } from "../../../drizzle/schema";
 import type { AreaModule } from "../types";
-import { platformFee, stripe, stripeConfigured } from "./stripe";
+import { platformFee, stripe, stripeConfigured, type Stripe } from "./stripe";
 import {
   DEFAULT_QUESTIONS,
   checkAnswers,
@@ -34,7 +34,7 @@ import {
   type Buyer,
 } from "./logic";
 import { KIND_LABELS, coverFor, describeRule, renderEmail, renderText, runFollowUps, sampleCtx, seedTemplates, templateFor } from "./messages";
-import { accountRow, accountView, onboardingLink, refreshAccount } from "./connect";
+import { accountRow, accountView, connectReady, connectUrl, disconnectAccount, refreshAccount } from "./connect";
 import { registerHttp, registerRawHttp } from "./http";
 
 const bad = (message: string) => new TRPCError({ code: "BAD_REQUEST", message });
@@ -117,6 +117,9 @@ function paymentsFor(orgId: number) {
     accountId: ready ? row!.accountId : null,
     businessName: row?.businessName ?? "",
     refundPolicy: row?.refundPolicy ?? "",
+    /** Klarna and Afterpay are on in the association's Stripe account. */
+    klarna: row?.payMethods.klarna === "active",
+    afterpay: row?.payMethods.afterpay === "active",
   };
 }
 
@@ -282,6 +285,7 @@ const checkoutRouter = router({
         sendWelcome: z.boolean(),
         platformTag: z.string().trim().max(60),
         embedStyle: z.enum(["inline", "popup"]),
+        payOverTime: z.boolean(),
       })
     )
     .mutation(({ ctx, input }) => {
@@ -375,7 +379,8 @@ const stripeRouter = router({
 
   connect: protectedProcedure.input(orgIn).mutation(async ({ ctx, input }) => {
     requireOrgAdmin(ctx.user, input.orgId);
-    const url = await onboardingLink(input.orgId);
+    if (!connectReady()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Stripe Connect is not set up on the server yet (STRIPE_SECRET_KEY and STRIPE_CONNECT_CLIENT_ID)." });
+    const url = connectUrl(input.orgId, ctx.user.id);
     audit(ctx.user, { orgId: input.orgId, action: "stripe.connect" });
     return { url };
   }),
@@ -409,10 +414,10 @@ const stripeRouter = router({
       return { note };
     }),
 
-  /** Forgets the account. Nothing changes in Stripe; the checkout page stops taking payments. */
-  disconnect: protectedProcedure.input(orgIn).mutation(({ ctx, input }) => {
+  /** Ends LeadDash's access to the account and forgets it. Nothing else changes in Stripe; the checkout page stops taking payments. */
+  disconnect: protectedProcedure.input(orgIn).mutation(async ({ ctx, input }) => {
     requireOrgAdmin(ctx.user, input.orgId);
-    getDb().delete(schema.stripeAccounts).where(eq(schema.stripeAccounts.orgId, input.orgId)).run();
+    await disconnectAccount(input.orgId);
     audit(ctx.user, { orgId: input.orgId, action: "stripe.disconnect" });
     return { ok: true };
   }),
@@ -479,7 +484,7 @@ const paymentRouter = router({
     if (!order || order.eventId !== input.eventId) throw notFound("That payment");
     if (order.status !== "paid") throw bad("Only paid orders can be refunded.");
     if (!order.stripePaymentIntentId || !order.stripeAccountId) throw bad("This payment has no Stripe record to refund.");
-    await stripe().refunds.create({ payment_intent: order.stripePaymentIntentId, refund_application_fee: true, metadata: { leaddash_order_id: String(order.id) } }, { stripeAccount: order.stripeAccountId });
+    await stripe().refunds.create({ payment_intent: order.stripePaymentIntentId, refund_application_fee: ENV.platformFeeRefund, metadata: { leaddash_order_id: String(order.id) } }, { stripeAccount: order.stripeAccountId });
     markRefunded(order.id);
     audit(ctx.user, { orgId: event.orgId, eventId: event.id, action: "order.refund", detail: `${order.email} ${order.amountCents}` });
     return { ok: true };
@@ -520,6 +525,7 @@ export const registrationRouter = router({
         questions: cleanQuestions(page.questions),
         showConfirmation: page.showConfirmation,
         embedStyle: page.embedStyle,
+        payOverTime: page.payOverTime,
       },
       tickets,
       payments: paymentsFor(ev.orgId),
@@ -582,6 +588,9 @@ export const registrationRouter = router({
           {
             ui_mode: "embedded_page",
             mode: "payment",
+            // Dynamic payment methods: whatever the association turned on in its Stripe dashboard
+            // (card, Apple Pay, Google Pay, Klarna, Afterpay) shows when the buyer is eligible.
+            ...(checkoutPageFor(ev.id).payOverTime ? {} : { excluded_payment_method_types: ["klarna", "afterpay_clearpay"] as Stripe.Checkout.SessionCreateParams.ExcludedPaymentMethodType[] }),
             line_items: [
               {
                 quantity: 1,

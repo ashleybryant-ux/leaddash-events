@@ -11,6 +11,7 @@ import { fulfillOrder, ticketsOnSale } from "../server/areas/registration/logic"
 import { runFollowUps } from "../server/areas/registration/messages";
 import { handleWebhookRequest } from "../server/areas/registration/http";
 import { registrationArea } from "../server/areas/registration";
+import { finishConnect, signState } from "../server/areas/registration/connect";
 
 const WEBHOOK_SECRET = "whsec_test_secret";
 const realWebhooks = new Stripe("sk_test_not_used").webhooks;
@@ -19,14 +20,17 @@ function fakeStripe() {
   const fake = {
     accounts: {
       create: vi.fn(async (..._args: unknown[]) => ({ id: "acct_test_1" })),
-      retrieve: vi.fn(async () => ({ id: "acct_test_1", charges_enabled: true, payouts_enabled: true, details_submitted: true, business_profile: { name: "NABC" }, settings: { payouts: { schedule: { interval: "daily" } }, payments: { statement_descriptor: "NABC CONFERENCE" } } })),
+      retrieve: vi.fn(async () => ({ id: "acct_test_1", charges_enabled: true, payouts_enabled: true, details_submitted: true, business_profile: { name: "NABC" }, capabilities: { card_payments: "active", klarna_payments: "active", afterpay_clearpay_payments: "inactive" }, settings: { payouts: { schedule: { interval: "daily" } }, payments: { statement_descriptor: "NABC CONFERENCE" } } })),
       update: vi.fn(async () => ({ id: "acct_test_1" })),
       listExternalAccounts: vi.fn(async () => ({ data: [{ object: "bank_account", last4: "6789" }] })),
     },
-    accountLinks: { create: vi.fn(async (..._args: unknown[]) => ({ url: "https://connect.stripe.com/setup/test" })) },
+    oauth: {
+      token: vi.fn(async (..._args: unknown[]) => ({ stripe_user_id: "acct_test_1", livemode: false, scope: "read_write" })),
+      deauthorize: vi.fn(async (..._args: unknown[]) => ({ stripe_user_id: "acct_test_1" })),
+    },
     checkout: {
       sessions: {
-        create: vi.fn(async () => ({ id: `cs_test_${Math.random().toString(36).slice(2)}`, client_secret: "cs_secret_123" })),
+        create: vi.fn(async (..._args: unknown[]) => ({ id: `cs_test_${Math.random().toString(36).slice(2)}`, client_secret: "cs_secret_123" })),
         retrieve: vi.fn(async (id: string, ..._rest: unknown[]) => ({ id, status: "complete", payment_status: "paid", payment_intent: "pi_test_1" })),
       },
     },
@@ -281,17 +285,48 @@ describe("registration", () => {
     await expect(admin.registration.payments.refund({ eventId: event.id, orderId: order.id })).rejects.toThrow(/Only paid/);
   });
 
-  it("connects Stripe for the association and reads its status", async () => {
+  it("connects the association's own Stripe account with Connect with Stripe, like LeadDash EHR", async () => {
     const stripe = fakeStripe();
-    const { org, admin } = await setup();
-    const { url } = await admin.registration.stripe.connect({ orgId: org.id });
-    expect(url).toBe("https://connect.stripe.com/setup/test");
-    expect(stripe.accounts.create.mock.calls[0][0]).toMatchObject({ controller: { stripe_dashboard: { type: "full" } } });
-    expect(stripe.accountLinks.create.mock.calls[0][0]).toMatchObject({ account: "acct_test_1", type: "account_onboarding", return_url: `${ENV.appUrl}/admin/payments?stripe=return`, refresh_url: `${ENV.appUrl}/admin/payments?stripe=refresh` });
-    const status = await admin.registration.stripe.refresh({ orgId: org.id });
-    expect(status).toMatchObject({ connected: true, chargesEnabled: true, payoutsEnabled: true, bankLast4: "6789", payoutInterval: "daily", statementDescriptor: "NABC CONFERENCE" });
-    await admin.registration.stripe.disconnect({ orgId: org.id });
-    expect((await admin.registration.stripe.status({ orgId: org.id })).connected).toBe(false);
+    const { org, admin, owner } = await setup();
+    const prev = ENV.stripeConnectClientId;
+    (ENV as { stripeConnectClientId: string }).stripeConnectClientId = "ca_test_1";
+    try {
+      const { url } = await admin.registration.stripe.connect({ orgId: org.id });
+      const u = new URL(url);
+      expect(u.origin + u.pathname).toBe("https://connect.stripe.com/oauth/authorize");
+      expect(u.searchParams.get("client_id")).toBe("ca_test_1");
+      expect(u.searchParams.get("scope")).toBe("read_write");
+      expect(u.searchParams.get("redirect_uri")).toBe(`${ENV.appUrl}/api/stripe/connect/callback`);
+      // A forged or stale state is refused; the real one connects the account.
+      await expect(finishConnect("code_1", "1.1.1.bad")).rejects.toThrow(/did not start/);
+      const out = await finishConnect("code_1", u.searchParams.get("state")!);
+      expect(out).toMatchObject({ orgId: org.id, accountId: "acct_test_1", userId: owner.id });
+      expect(stripe.oauth.token.mock.calls[0][0]).toMatchObject({ grant_type: "authorization_code", code: "code_1" });
+      const status = await admin.registration.stripe.status({ orgId: org.id });
+      expect(status).toMatchObject({ connected: true, chargesEnabled: true, bankLast4: "6789", payMethods: { card: "active", klarna: "active", afterpay: "inactive" } });
+      expect(signState(org.id, owner.id, Date.now() - 31 * 60_000)).toBeTruthy();
+      await expect(finishConnect("code_2", signState(org.id, owner.id, Date.now() - 31 * 60_000))).rejects.toThrow(/30 minutes/);
+      await admin.registration.stripe.disconnect({ orgId: org.id });
+      expect(stripe.oauth.deauthorize.mock.calls[0][0]).toMatchObject({ client_id: "ca_test_1", stripe_user_id: "acct_test_1" });
+      expect((await admin.registration.stripe.status({ orgId: org.id })).connected).toBe(false);
+    } finally {
+      (ENV as { stripeConnectClientId: string }).stripeConnectClientId = prev;
+    }
+  });
+
+  it("leaves Klarna and Afterpay out of checkout when the event turns pay over time off", async () => {
+    const stripe = fakeStripe();
+    const { event, org, admin, nonmember } = await setup();
+    connectStripe(org.id);
+    setTicket(nonmember.id, { active: true, priceCents: 25000 });
+    const pub = caller(null);
+    await pub.registration.start({ slug: event.slug, ticketId: nonmember.id, buyer: buyer("bnpl-on@example.com") });
+    expect(stripe.checkout.sessions.create.mock.calls.at(-1)![0]).not.toHaveProperty("excluded_payment_method_types");
+    expect(stripe.checkout.sessions.create.mock.calls.at(-1)![0]).not.toHaveProperty("payment_method_types");
+    const page = await admin.registration.checkout.get({ eventId: event.id });
+    await admin.registration.checkout.save({ eventId: event.id, coverFileId: page.coverFileId, headline: page.headline, description: page.description, buttonLabel: page.buttonLabel, ticketIds: page.ticketIds, questions: page.questions, showConfirmation: page.showConfirmation, sendWelcome: page.sendWelcome, platformTag: page.platformTag, embedStyle: page.embedStyle, payOverTime: false });
+    await pub.registration.start({ slug: event.slug, ticketId: nonmember.id, buyer: buyer("bnpl-off@example.com") });
+    expect(stripe.checkout.sessions.create.mock.calls.at(-1)![0]).toMatchObject({ excluded_payment_method_types: ["klarna", "afterpay_clearpay"] });
   });
 
   it("sends follow-ups when they are due, honoring text consent and app opens", async () => {

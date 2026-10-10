@@ -9,7 +9,8 @@ import { ENV } from "../../_core/env";
 import { webhookVerifier, type Stripe } from "./stripe";
 import { fulfillOrder, markRefunded } from "./logic";
 import { calendarFile, qrPng } from "./messages";
-import { saveAccountStatus } from "./connect";
+import { finishConnect, saveAccountStatus } from "./connect";
+import { userFromCookie } from "../../_core/context";
 
 const idOf = (v: string | { id: string } | null | undefined) => (typeof v === "string" ? v : v?.id ?? null);
 
@@ -65,6 +66,11 @@ export async function handleStripeEvent(event: Stripe.Event) {
       const a = event.data.object as Stripe.Account;
       saveAccountStatus(a);
       return "account";
+    }
+    case "account.application.deauthorized": {
+      // The association removed LeadDash from its Stripe account.
+      if (account) db.delete(schema.stripeAccounts).where(eq(schema.stripeAccounts.accountId, account)).run();
+      return "deauthorized";
     }
     default:
       return "ignored";
@@ -153,6 +159,22 @@ export const EMBED_JS = `(function () {
 `;
 
 export function registerHttp(app: Express) {
+  // Stripe sends the association's admin back here after "Connect with Stripe".
+  app.get("/api/stripe/connect/callback", async (req, res) => {
+    const back = (q: string) => res.redirect(`/admin/payments?${q}`);
+    if (req.query.error) return back(`stripe=failed&reason=${encodeURIComponent(String(req.query.error_description || "The connection was cancelled."))}`);
+    const user = userFromCookie(req.headers.cookie);
+    if (!user) return back("stripe=failed&reason=" + encodeURIComponent("Sign in to LeadDash Events, then connect Stripe again."));
+    try {
+      const out = await finishConnect(String(req.query.code || ""), String(req.query.state || ""));
+      if (out.userId !== user.id) return back("stripe=failed&reason=" + encodeURIComponent("Connect Stripe from the same sign-in that started it."));
+      back("stripe=connected");
+    } catch (err) {
+      console.error("[stripe] connect callback failed:", (err as Error).message);
+      back(`stripe=failed&reason=${encodeURIComponent((err as Error).message)}`);
+    }
+  });
+
   app.get("/embed.js", (_req, res) => {
     res.setHeader("Content-Type", "application/javascript; charset=utf-8");
     res.setHeader("Cache-Control", "public, max-age=300");

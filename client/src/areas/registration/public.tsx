@@ -81,6 +81,9 @@ export function EventLandingScreen({ slug }: { slug: string }) {
         </div>
         {d.page.description ? <div style={{ fontSize: 14, lineHeight: 1.55, color: "var(--ink-2)", whiteSpace: "pre-line" }}>{d.page.description}</div> : null}
         <div className="section-title" style={{ paddingTop: 6 }}>Tickets</div>
+        {d.page.payOverTime && (d.payments.klarna || d.payments.afterpay) && !d.closed && d.tickets.some((t) => t.priceCents >= 100) ? (
+          <div className="small muted">Pay in full, or over time with {[d.payments.klarna ? "Klarna" : "", d.payments.afterpay ? "Afterpay" : ""].filter(Boolean).join(" or ")}.</div>
+        ) : null}
         {d.closed ? (
           <div className="banner banner-warn">Registration is closed.</div>
         ) : !d.tickets.length ? (

@@ -494,6 +494,7 @@ type PageDraft = {
   tagOn: boolean;
   platformTag: string;
   embedStyle: "inline" | "popup";
+  payOverTime: boolean;
 };
 
 function CheckoutTab({ event, canEdit }: { event: AdminEvent; canEdit: boolean }) {
@@ -522,6 +523,7 @@ function CheckoutTab({ event, canEdit }: { event: AdminEvent; canEdit: boolean }
     tagOn: !!p.platformTag,
     platformTag: p.platformTag,
     embedStyle: p.embedStyle,
+    payOverTime: p.payOverTime,
   };
   const d = draft ?? saved;
   const set = (patch: Partial<PageDraft>) => setDraft({ ...d, ...patch });
@@ -542,6 +544,7 @@ function CheckoutTab({ event, canEdit }: { event: AdminEvent; canEdit: boolean }
       <KV label="Button label">{p.buttonLabel}</KV>
       <KV label="Tickets on the page">{p.ticketIds.length ? ticketNames(p.ticketIds) : "Every ticket that is on sale"}</KV>
       <KV label="Questions at sign-up">{p.questions.map((q) => `${q.label}${q.required ? "" : " (optional)"}`).join(", ")}</KV>
+      <KV label="Pay over time">{p.payOverTime ? "Klarna and Afterpay offered when they are on in Stripe" : "Not offered"}</KV>
       <KV label="After payment">
         {[p.showConfirmation ? "Confirmation page with Get the app" : "", p.sendWelcome ? "Welcome email" : "", p.platformTag ? `LeadDash platform tag "${p.platformTag}"` : ""].filter(Boolean).join(", ") || "Nothing"}
       </KV>
@@ -596,6 +599,13 @@ function CheckoutTab({ event, canEdit }: { event: AdminEvent; canEdit: boolean }
       </div>
       <QuestionsEditor questions={d.questions} onChange={(questions) => set({ questions })} />
       <div className="col gap-8" style={{ fontSize: 13 }}>
+        <span className="field">Pay over time</span>
+        <label className="check">
+          <input type="checkbox" checked={d.payOverTime} onChange={(e) => set({ payOverTime: e.target.checked })} />
+          Offer Klarna and Afterpay at checkout
+        </label>
+      </div>
+      <div className="col gap-8" style={{ fontSize: 13 }}>
         <span className="field">After payment</span>
         <label className="check">
           <input type="checkbox" checked={d.showConfirmation} onChange={(e) => set({ showConfirmation: e.target.checked })} />
@@ -642,6 +652,7 @@ function CheckoutTab({ event, canEdit }: { event: AdminEvent; canEdit: boolean }
                 sendWelcome: d.sendWelcome,
                 platformTag: d.tagOn ? d.platformTag.trim() : "",
                 embedStyle: d.embedStyle,
+                payOverTime: d.payOverTime,
               });
               await Promise.all([utils.registration.checkout.get.invalidate(), utils.registration.page.invalidate()]);
               setDraft(null);
@@ -1170,11 +1181,11 @@ function SetupPanel({ orgId, orgName, canManage }: { orgId: number; orgName: str
       </div>
       <span className="h2">Get paid with Stripe</span>
       <span style={{ fontSize: 14, lineHeight: 1.55, color: "var(--ink-2)" }}>
-        Connect {orgName}'s Stripe account so people can pay on the checkout page. Payments go straight to {orgName}'s bank. Sign in to an existing Stripe account, or create one in a few minutes.
+        Connect {orgName}'s Stripe account so people can pay on the checkout page with a card, Apple Pay, Google Pay, Klarna or Afterpay. Payments go straight to {orgName}'s bank. Sign in to an existing Stripe account, or create one in a few minutes.
       </span>
       <div className="col gap-8" style={{ fontSize: 14 }}>
         <div className="row"><StepNumber n={1} size={26} />Click Connect with Stripe</div>
-        <div className="row"><StepNumber n={2} size={26} />Sign in to Stripe, or enter the business and bank details</div>
+        <div className="row"><StepNumber n={2} size={26} />Sign in to Stripe (or create an account) and allow LeadDash</div>
         <div className="row"><StepNumber n={3} size={26} />Come back here; the checkout page turns on</div>
       </div>
       {canManage ? (
@@ -1191,6 +1202,13 @@ function SetupPanel({ orgId, orgName, canManage }: { orgId: number; orgName: str
 function feeText(fee: { cents: number; percent: number }) {
   const parts = [fee.cents > 0 ? fmtMoney(fee.cents) : "", fee.percent > 0 ? `${fee.percent}%` : ""].filter(Boolean);
   return parts.length ? `${parts.join(" plus ")} per ticket` : "None";
+}
+
+/** A Stripe capability status in plain words. */
+function methodText(v: string) {
+  if (v === "active") return <span style={{ color: "var(--brand)" }}>On</span>;
+  if (v === "pending") return <span style={{ color: "var(--warn-ink)" }}>Stripe is reviewing it</span>;
+  return <span className="muted">Off. Turn it on in Stripe under Settings, Payment methods.</span>;
 }
 
 const INTERVALS: Record<string, string> = { daily: "daily", weekly: "weekly", monthly: "monthly", manual: "when you ask" };
@@ -1214,6 +1232,8 @@ function AccountPanel({ orgId, orgName, status, canManage }: { orgId: number; or
       <KV label="Payouts to">{payouts}</KV>
       <KV label="Name on card statements">{status.statementDescriptor}</KV>
       <KV label="Ways to pay">Card, Apple Pay, Google Pay</KV>
+      <KV label="Klarna">{methodText(status.payMethods.klarna)}</KV>
+      <KV label="Afterpay">{methodText(status.payMethods.afterpay)}</KV>
       <KV label="Receipts">Stripe emails a receipt after each payment</KV>
       <KV label="Refunds">{status.refundPolicy}</KV>
       <KV label="LeadDash fee">{feeText(status.fee)}</KV>
@@ -1257,10 +1277,15 @@ function AccountPanel({ orgId, orgName, status, canManage }: { orgId: number; or
           <a className="btn btn-sm" href="https://dashboard.stripe.com/" target="_blank" rel="noreferrer">
             Open Stripe dashboard
           </a>
+          {status.payMethods.klarna !== "active" || status.payMethods.afterpay !== "active" ? (
+            <a className="btn btn-sm" href="https://dashboard.stripe.com/settings/payment_methods" target="_blank" rel="noreferrer">
+              Turn on Klarna or Afterpay
+            </a>
+          ) : null}
           {canManage && !status.chargesEnabled ? (
-            <button className="btn btn-sm btn-solid" disabled={start.pending} onClick={start.go}>
-              Finish setup
-            </button>
+            <a className="btn btn-sm btn-solid" href="https://dashboard.stripe.com/account/onboarding" target="_blank" rel="noreferrer">
+              Finish setup in Stripe
+            </a>
           ) : null}
           {canManage ? (
             <button
@@ -1407,22 +1432,23 @@ function OrgPayments({ orgId, orgName }: { orgId: number; orgName: string }) {
   const start = useStartOnboarding(orgId);
   const handled = useRef(false);
 
-  // Back from Stripe: read the account's new state. An expired Stripe link: make a fresh one.
+  // Back from "Connect with Stripe": show the result and read the account's state.
+  const reason = new URLSearchParams(useSearch()).get("reason");
   useEffect(() => {
     if (!flag || handled.current) return;
     handled.current = true;
-    if (flag === "return") {
+    if (flag === "connected") {
       refresh
         .mutateAsync({ orgId })
         .then(async (s) => {
           await Promise.all([utils.registration.stripe.status.invalidate(), utils.registration.stripe.forEvent.invalidate()]);
-          toast(s.connected && s.chargesEnabled ? "Stripe is connected" : "Stripe still needs a few details. Click Finish setup.");
+          toast(s.connected && s.chargesEnabled ? "Stripe is connected" : "Connected. Stripe still needs a few details: click Finish setup in Stripe.");
         })
         .catch((err) => toast(errorText(err), true))
         .finally(() => navigate(location, { replace: true }));
-    } else if (flag === "refresh") {
+    } else if (flag === "failed") {
+      toast(reason || "Stripe was not connected. Try again.", true);
       navigate(location, { replace: true });
-      void start.go();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flag]);

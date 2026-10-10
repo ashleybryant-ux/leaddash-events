@@ -70,6 +70,8 @@ export const checkoutPages = sqliteTable("checkout_pages", {
   sendWelcome: integer("send_welcome", { mode: "boolean" }).notNull().default(true),
   platformTag: text("platform_tag").notNull().default(""),
   embedStyle: text("embed_style", { enum: ["inline", "popup"] }).notNull().default("inline"),
+  /** Offer Klarna and Afterpay at checkout when the association's Stripe account has them on. */
+  payOverTime: integer("pay_over_time", { mode: "boolean" }).notNull().default(true),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
 });
 
@@ -156,6 +158,11 @@ export const stripeAccounts = sqliteTable("stripe_accounts", {
   detailsSubmitted: integer("details_submitted", { mode: "boolean" }).notNull().default(false),
   statementDescriptor: text("statement_descriptor").notNull().default(""),
   refundPolicy: text("refund_policy").notNull().default(""),
+  /** Capability status per way to pay, from Stripe ("active", "inactive", "pending", or "" when not requested). */
+  payMethods: text("pay_methods", { mode: "json" }).$type<{ card: string; klarna: string; afterpay: string }>().notNull().default(sql`'{"card":"","klarna":"","afterpay":""}'`),
+  /** "oauth" (Connect with Stripe, Standard account) or "created" (older accounts made by LeadDash). */
+  connectedVia: text("connected_via").notNull().default("oauth"),
+  livemode: integer("livemode", { mode: "boolean" }).notNull().default(true),
   connectedAt: integer("connected_at", { mode: "timestamp_ms" }),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
 });
