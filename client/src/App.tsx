@@ -5,6 +5,7 @@ import { routes as programRoutes } from "./areas/program/routes";
 import { routes as registrationRoutes } from "./areas/registration/routes";
 import { routes as ceRoutes } from "./areas/ce/routes";
 import { routes as networkRoutes } from "./areas/network/routes";
+import { routes as agreementRoutes } from "./areas/agreements/routes";
 import { EventApp } from "./shells/AttendeeShell";
 import { AdminApp } from "./shells/AdminShell";
 import { AdminHomeScreen, EventHomeScreen, EventSettingsScreen, HomeScreen, LeadDashToolsScreen, OrgSettingsScreen } from "./core/screens";
@@ -17,7 +18,7 @@ const coreRoutes: AppRoute[] = [
   { path: "/admin/e/:eventId/settings", shell: "admin", render: () => <EventSettingsScreen /> },
 ];
 
-const all: AppRoute[] = [...coreRoutes, ...programRoutes, ...registrationRoutes, ...ceRoutes, ...networkRoutes];
+const all: AppRoute[] = [...coreRoutes, ...programRoutes, ...registrationRoutes, ...ceRoutes, ...networkRoutes, ...agreementRoutes];
 
 function wrap(r: AppRoute, params: Record<string, string>): ReactNode {
   const inner = r.render(params);

@@ -25,6 +25,17 @@ export const KIND_LABELS: Record<MessageKind, string> = {
   app_reminder: "App reminder email",
   know_before: "Know before you go",
   morning_text: "Morning-of text",
+  speaker_welcome: "Welcome email",
+  speaker_slides_reminder: "Slides reminder",
+  speaker_know_before: "Speaker know before you go",
+  speaker_thanks: "Thank you and evaluation results",
+  sponsor_welcome: "Welcome email",
+  sponsor_passes_reminder: "Pass names reminder",
+  sponsor_logo_reminder: "Logo and ad reminder",
+  sponsor_know_before: "Sponsor know before you go",
+  exhibitor_welcome: "Welcome email",
+  exhibitor_booth_assigned: "Booth number assigned",
+  exhibitor_know_before: "Exhibitor know before you go",
 };
 
 /** The five messages every new event starts with. */

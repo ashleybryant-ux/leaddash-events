@@ -16,7 +16,7 @@ import { attendeeName, badRequest, evaluationWindow, formForSession, getAttendee
 
 type Attendee = typeof schema.attendees.$inferSelect;
 
-const KIND_LABEL: Record<Attendee["kind"], string> = { attendee: "Attendee", speaker: "Speaker", vendor: "Exhibitor", staff: "Staff", guest: "Walk-in" };
+const KIND_LABEL: Record<Attendee["kind"], string> = { attendee: "Attendee", speaker: "Speaker", vendor: "Exhibitor", staff: "Staff", guest: "Walk-in", volunteer: "Volunteer", sponsor: "Sponsor guest" };
 
 /** The token in a scanned badge: either the full badge link (`.../badge?t=<token>`) or just the token. */
 export function tokenFromScan(raw: string) {

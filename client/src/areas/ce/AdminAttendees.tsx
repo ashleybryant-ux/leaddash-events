@@ -16,7 +16,7 @@ type Row = RouterOutputs["ce"]["attendees"]["list"][number];
 type Kind = Row["kind"];
 type Tab = "all" | "in" | "out" | "evals" | "speakers" | "vendors";
 
-const KIND_LABEL: Record<Kind, string> = { attendee: "Attendee", speaker: "Speaker", vendor: "Exhibitor", staff: "Staff", guest: "Walk-in" };
+const KIND_LABEL: Record<Kind, string> = { attendee: "Attendee", speaker: "Speaker", vendor: "Exhibitor", staff: "Staff", guest: "Walk-in", volunteer: "Volunteer", sponsor: "Sponsor guest" };
 const COLS = "minmax(0, 1.6fr) minmax(0, 1.2fr) 170px 90px 90px 96px";
 
 const hours = (h: number) => (Number.isInteger(h) ? h.toFixed(1) : String(h));

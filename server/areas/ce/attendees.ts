@@ -12,7 +12,7 @@ import { randomToken } from "../../_core/crypto";
 import { fullName } from "@shared/format";
 import { badRequest, evaluationWindow, formForSession, getAttendee, parseCsv, toCsv } from "./shared";
 
-const KINDS = ["attendee", "speaker", "vendor", "staff", "guest"] as const;
+const KINDS = ["attendee", "speaker", "vendor", "staff", "guest", "volunteer", "sponsor"] as const;
 
 const details = z.object({
   firstName: z.string().trim().min(1).max(80),

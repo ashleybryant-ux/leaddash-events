@@ -187,6 +187,24 @@ export const vendors = sqliteTable(
     category: text("category").notNull().default(""),
     /** Booth staff can scan attendee badges for leads. */
     leadScanning: integer("lead_scanning", { mode: "boolean" }).notNull().default(true),
+    /** Package sold (vendor_packages). Empty for vendors set up before packages. */
+    packageId: integer("package_id"),
+    /** Add-ons bought (VendorAddonLine[] from ./sponsor). */
+    addons: text("addons", { mode: "json" }).$type<{ addonId: number; name: string; qty: number; priceCents: number }[]>().notNull().default(sql`'[]'`),
+    /** manual: added by staff. checkout: bought on the sponsor or exhibitor checkout page. */
+    source: text("source", { enum: ["manual", "checkout"] }).notNull().default("manual"),
+    /** The rest of a deposit, charged automatically on nextChargeOn to the saved payment method. */
+    nextChargeCents: integer("next_charge_cents").notNull().default(0),
+    nextChargeOn: text("next_charge_on"),
+    nextChargeReminderAt: integer("next_charge_reminder_at", { mode: "timestamp_ms" }),
+    /** Last automatic charge attempt result ("" or the reason it failed). */
+    nextChargeError: text("next_charge_error").notNull().default(""),
+    stripeCustomerId: text("stripe_customer_id"),
+    stripePaymentMethodId: text("stripe_payment_method_id"),
+    /** "Bank ending 6789", "Visa ending 4242". */
+    payMethodLabel: text("pay_method_label").notNull().default(""),
+    /** Invoice choice on the checkout page: the package is held until this date. */
+    holdUntil: text("hold_until"),
     createdAt: createdAt(),
   },
   (t) => [index("vendors_event").on(t.eventId)]

@@ -33,6 +33,10 @@ export const sessions = sqliteTable(
     certificateTemplateId: integer("certificate_template_id"),
     /** When the certificate is issued. Empty means the template's rule. */
     certificateAfter: text("certificate_after", { enum: ["evaluation", "checkin"] }),
+    /** When attendees can download the slides: after the session starts, right away, or never. */
+    slidesShare: text("slides_share", { enum: ["after_start", "now", "hidden"] }).notNull().default("after_start"),
+    /** Calendar date slides are due from speakers. */
+    slidesDueOn: text("slides_due_on"),
     createdAt: createdAt(),
   },
   (t) => [index("sessions_event").on(t.eventId, t.date)]
@@ -59,6 +63,8 @@ export const speakers = sqliteTable(
     userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
     /** Attendees can message this speaker from the bio sheet. */
     allowMessages: integer("allow_messages", { mode: "boolean" }).notNull().default(true),
+    /** Secret in the speaker page link (/speak/:token): slides, bio and agreement. */
+    portalToken: text("portal_token").unique(),
     sort: integer("sort").notNull().default(0),
     createdAt: createdAt(),
   },

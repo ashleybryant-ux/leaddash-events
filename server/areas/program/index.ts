@@ -9,6 +9,7 @@ import { speakersRouter } from "./speakers";
 import { announcementsRouter, runScheduledAnnouncements, runSessionReminders } from "./announcements";
 import { alertsRouter, brandingRouter, diningRouter, hostRouter } from "./info";
 import { helpRouter, seedHelp } from "./help";
+import { slidesRouter } from "./slides";
 
 export const programRouter = router({
   sessions: sessionsRouter,
@@ -19,6 +20,7 @@ export const programRouter = router({
   help: helpRouter,
   branding: brandingRouter,
   alerts: alertsRouter,
+  slides: slidesRouter,
 });
 
 export const programArea: AreaModule<typeof programRouter> = {

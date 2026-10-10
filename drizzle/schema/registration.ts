@@ -101,7 +101,9 @@ export const attendees = sqliteTable(
     textConsent: integer("text_consent", { mode: "boolean" }).notNull().default(false),
     ticketTypeId: integer("ticket_type_id").references(() => ticketTypes.id, { onDelete: "set null" }),
     status: text("status", { enum: ["pending", "registered", "cancelled"] }).notNull().default("registered"),
-    kind: text("kind", { enum: ["attendee", "speaker", "vendor", "staff", "guest"] }).notNull().default("attendee"),
+    kind: text("kind", { enum: ["attendee", "speaker", "vendor", "staff", "guest", "volunteer", "sponsor"] }).notNull().default("attendee"),
+    /** Sponsor or exhibitor whose pass this person uses. */
+    vendorId: integer("vendor_id"),
     /** Secret printed in the attendee's check-in QR code. */
     qrToken: text("qr_token").notNull().unique(),
     checkedInAt: integer("checked_in_at", { mode: "timestamp_ms" }),
@@ -136,6 +138,13 @@ export const orders = sqliteTable(
     doneToken: text("done_token").unique(),
     /** What the buyer typed, held until payment completes. */
     buyer: text("buyer", { mode: "json" }).$type<Record<string, unknown>>().notNull().default(sql`'{}'`),
+    /** stripe: paid on the checkout page. check, cash, invoice, other: recorded by staff. comp: no charge. sponsor_pass: included in a package. link: payment link emailed. */
+    method: text("method", { enum: ["stripe", "check", "cash", "invoice", "other", "comp", "sponsor_pass", "link"] }).notNull().default("stripe"),
+    /** Check or invoice number recorded by staff. */
+    reference: text("reference").notNull().default(""),
+    /** Calendar date staff recorded the payment, "2026-10-09". */
+    paidOn: text("paid_on").notNull().default(""),
+    recordedBy: integer("recorded_by"),
     paidAt: integer("paid_at", { mode: "timestamp_ms" }),
     refundedAt: integer("refunded_at", { mode: "timestamp_ms" }),
     createdAt: createdAt(),
@@ -167,7 +176,24 @@ export const stripeAccounts = sqliteTable("stripe_accounts", {
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
 });
 
-export const MESSAGE_KINDS = ["welcome", "text_app", "app_reminder", "know_before", "morning_text"] as const;
+export const MESSAGE_KINDS = [
+  "welcome",
+  "text_app",
+  "app_reminder",
+  "know_before",
+  "morning_text",
+  "speaker_welcome",
+  "speaker_slides_reminder",
+  "speaker_know_before",
+  "speaker_thanks",
+  "sponsor_welcome",
+  "sponsor_passes_reminder",
+  "sponsor_logo_reminder",
+  "sponsor_know_before",
+  "exhibitor_welcome",
+  "exhibitor_booth_assigned",
+  "exhibitor_know_before",
+] as const;
 export type MessageKind = (typeof MESSAGE_KINDS)[number];
 
 /** The welcome email and the follow-ups sent to people who register. */
@@ -188,7 +214,7 @@ export const messageTemplates = sqliteTable(
     subject: text("subject").notNull().default(""),
     body: text("body").notNull().default(""),
     includes: text("includes", { mode: "json" })
-      .$type<{ receipt: boolean; getApp: boolean; qr: boolean; calendar: boolean; hotel: boolean; hotelUrl?: string }>()
+      .$type<{ receipt: boolean; getApp: boolean; qr: boolean; calendar: boolean; hotel: boolean; hotelUrl?: string; [key: string]: boolean | string | undefined }>()
       .notNull()
       .default(sql`'{"receipt":true,"getApp":true,"qr":true,"calendar":true,"hotel":false}'`),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
