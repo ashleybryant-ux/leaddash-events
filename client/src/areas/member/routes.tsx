@@ -14,7 +14,7 @@ export const routes: AppRoute[] = [
   { path: "/m/:orgSlug/docs/:folderId", shell: "member", render: (p) => <MemberDocs folderId={p.folderId} /> },
   { path: "/m/:orgSlug/groups/:groupId", shell: "member", render: (p) => <MemberGroup groupId={Number(p.groupId)} /> },
 
-  // Association admin
+  // Organization admin
   { path: "/admin/members", shell: "admin", render: () => <AdminMembers /> },
   { path: "/admin/divisions", shell: "admin", render: () => <AdminDivisions /> },
   { path: "/admin/documents", shell: "admin", render: () => <AdminDocuments /> },

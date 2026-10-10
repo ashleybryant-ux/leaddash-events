@@ -237,7 +237,7 @@ export async function deliver(t: Template, attendee: Attendee, ev: Event) {
       }
       const ok = await sendText(ev.orgId, { email: attendee.email, firstName: attendee.firstName, lastName: attendee.lastName, phone: attendee.phone }, renderText(t, c));
       if (!ok) {
-        finish(logId, "skipped", "Texting is not set up for this association");
+        finish(logId, "skipped", "Texting is not set up for this organization");
         return "skipped";
       }
       return "sent";

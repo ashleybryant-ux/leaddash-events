@@ -2,8 +2,8 @@
  * The admin frame: dark sidebar with the LEADDASH EVENTS wordmark, the main
  * nav, and the "This event" menu (only the areas the person may open).
  *
- * Event screens live at /admin/e/:eventId/<section>; association screens at
- * /admin/<section>. Screens use useAdmin() for the association, the event and
+ * Event screens live at /admin/e/:eventId/<section>; organization screens at
+ * /admin/<section>. Screens use useAdmin() for the organization, the event and
  * the person's access, and wrap their content in <AdminPage>.
  */
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
@@ -198,7 +198,7 @@ export function AdminPage({ title, sub: subtitle, actions, children, banner }: {
   );
 }
 
-/** The usual subtitle for event screens: "NABC Annual Conference · Apr 22, 2027 to Apr 24, 2027". */
+/** The usual subtitle for event screens: "Annual Conference · Apr 22, 2027 to Apr 24, 2027". */
 export function useEventSub() {
   const { event } = useAdmin();
   return event ? `${event.name} · ${fmtDates(event.startDate, event.endDate)}` : "";

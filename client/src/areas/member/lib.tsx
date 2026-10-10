@@ -1,4 +1,4 @@
-/** Small helpers shared by the member hub and the association admin screens. */
+/** Small helpers shared by the member hub and the organization admin screens. */
 import type { ReactNode } from "react";
 
 /** Saves text as a file (CSV exports). */

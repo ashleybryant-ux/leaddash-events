@@ -216,7 +216,7 @@ export function readFileBase64(file: File): Promise<string> {
 
 /**
  * Upload button. Calls core.files.upload and hands back the file id and url.
- * Pass eventId (event files) or orgId (association files).
+ * Pass eventId (event files) or orgId (organization files).
  */
 export function UploadButton({ label = "Upload", accept = "image/*", eventId, orgId, isPublic = true, onUploaded, className = "btn btn-sm btn-w" }: { label?: string; accept?: string; eventId?: number; orgId?: number; isPublic?: boolean; onUploaded: (f: { id: number; url: string; name: string }) => void; className?: string }) {
   const input = useRef<HTMLInputElement>(null);

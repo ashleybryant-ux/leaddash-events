@@ -174,7 +174,7 @@ describe("CE: session check-in, evaluations and certificates", () => {
     expect((await api.ce.certificates.credits({ slug: event.slug })).hours).toBe(1.5);
   });
 
-  it("builds a transcript across two events of the same association", async () => {
+  it("builds a transcript across two events of the same organization", async () => {
     const { event, org, admin } = await setupEvent();
     const db = getDb();
     const older = db
@@ -183,7 +183,7 @@ describe("CE: session check-in, evaluations and certificates", () => {
       .returning()
       .get();
     await seedEvent(older.id);
-    const other = await setupEvent({ orgName: "Another association", ownerEmail: "other@example.org" });
+    const other = await setupEvent({ orgName: "Another organization", ownerEmail: "other@example.org" });
     const s1 = addSession(event.id);
     const s2 = addSession(older.id, { date: "2026-04-23", ceHours: 3 });
     const s3 = addSession(other.event.id, { ceHours: 6 });
@@ -201,7 +201,7 @@ describe("CE: session check-in, evaluations and certificates", () => {
     expect(t.entries.map((e) => e.title)).toEqual(["Ethics webinar"]);
     const csv = await now.api.ce.certificates.transcriptCsv({ slug: event.slug });
     expect(csv.csv).toContain("Ethics webinar");
-    expect(csv.csv).not.toContain("Another association");
+    expect(csv.csv).not.toContain("Another organization");
   });
 
   it("lets a session use its own evaluation form instead of the default", async () => {

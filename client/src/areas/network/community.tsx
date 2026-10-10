@@ -366,7 +366,7 @@ export function NewTopicScreen() {
     >
       {list.data && !list.data.canStart ? <div className="banner banner-warn">Only the event team can start topics.</div> : null}
       <Field label="Topic title">
-        <input className="input" value={name} maxLength={100} placeholder="Dinner meetup for Houston-area counselors" onChange={(e) => setName(e.target.value)} />
+        <input className="input" value={name} maxLength={100} placeholder="Dinner meetup on Friday night" onChange={(e) => setName(e.target.value)} />
       </Field>
       <Field label="First post">
         <textarea className="textarea" rows={6} maxLength={4000} value={body} onChange={(e) => setBody(e.target.value)} />

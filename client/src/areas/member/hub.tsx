@@ -97,7 +97,7 @@ function statusLine(card: { status: string; expiresOn: string | null }) {
 }
 
 function RenewButton({ url, className = "btn btn-primary btn-sm" }: { url: string; className?: string }) {
-  if (!url) return <span className="small muted">Contact the association to renew.</span>;
+  if (!url) return <span className="small muted">Contact the organization to renew.</span>;
   return (
     <a className={className} href={url} target="_blank" rel="noreferrer">
       Renew
@@ -591,7 +591,7 @@ function MemberCertificates() {
       ) : certs.error ? (
         <ErrorNote error={certs.error} />
       ) : !certs.data?.length ? (
-        <Empty>Certificates from the association's events show here.</Empty>
+        <Empty>Certificates from the organization's events show here.</Empty>
       ) : (
         <ListCard>
           {certs.data.map((c) => (

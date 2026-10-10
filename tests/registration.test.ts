@@ -211,7 +211,7 @@ describe("registration", () => {
     expect(stripe.checkout.sessions.retrieve.mock.calls[0][2]).toEqual({ stripeAccount: "acct_test_1" });
   });
 
-  it("refuses payment when the association has not connected Stripe", async () => {
+  it("refuses payment when the organization has not connected Stripe", async () => {
     const { event, nonmember } = await setup();
     setTicket(nonmember.id, { active: true, priceCents: 40000 });
     await expect(caller(null).registration.start({ slug: event.slug, ticketId: nonmember.id, buyer: buyer("x@example.com") })).rejects.toThrow(/not taking payments/);
@@ -285,7 +285,7 @@ describe("registration", () => {
     await expect(admin.registration.payments.refund({ eventId: event.id, orderId: order.id })).rejects.toThrow(/Only paid/);
   });
 
-  it("connects the association's own Stripe account with Connect with Stripe, like LeadDash EHR", async () => {
+  it("connects the organization's own Stripe account with Connect with Stripe, like LeadDash EHR", async () => {
     const stripe = fakeStripe();
     const { org, admin, owner } = await setup();
     const prev = ENV.stripeConnectClientId;

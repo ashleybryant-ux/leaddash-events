@@ -24,7 +24,7 @@ export function eventReport(eventId: number) {
   const responses = sessionIds.length ? db.select().from(schema.evaluationResponses).where(inArray(schema.evaluationResponses.sessionId, sessionIds)).all() : [];
   const certs = db.select().from(schema.certificates).where(eq(schema.certificates.eventId, eventId)).all().filter((c) => !c.revokedAt);
 
-  // Returning: registered here and at an earlier event of the same association.
+  // Returning: registered here and at an earlier event of the same organization.
   const earlier = db
     .select()
     .from(schema.events)

@@ -1,4 +1,4 @@
-/** Screens that belong to the app itself: home, admin events list, association settings, event settings. */
+/** Screens that belong to the app itself: home, admin events list, organization settings, event settings. */
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { trpc } from "../lib/trpc";
@@ -69,7 +69,7 @@ export function HomeScreen() {
   );
 }
 
-/** /admin: the association's events, plus creating an event. */
+/** /admin: the organization's events, plus creating an event. */
 export function AdminHomeScreen() {
   const { me, orgId, setOrgId } = useAdmin();
   const events = trpc.core.events.list.useQuery({ orgId: orgId ?? 0 }, { enabled: !!orgId });
@@ -84,7 +84,7 @@ export function AdminHomeScreen() {
         <>
           {me.isLeadDashStaff ? (
             <button className="btn" onClick={() => setNewOrg(true)}>
-              New association
+              New organization
             </button>
           ) : null}
           {orgId ? (
@@ -97,10 +97,10 @@ export function AdminHomeScreen() {
     >
       {me.isLeadDashStaff ? (
         <div className="row gap-8">
-          <span className="sub">Association</span>
+          <span className="sub">Organization</span>
           <select className="select" style={{ maxWidth: 320 }} value={orgId ?? ""} onChange={(e) => setOrgId(Number(e.target.value))}>
             <option value="" disabled>
-              Pick an association
+              Pick an organization
             </option>
             {(allOrgs.data ?? []).map((o) => (
               <option key={o.id} value={o.id}>
@@ -112,7 +112,7 @@ export function AdminHomeScreen() {
         </div>
       ) : me.orgs.length > 1 ? (
         <div className="row gap-8">
-          <span className="sub">Association</span>
+          <span className="sub">Organization</span>
           <select className="select" style={{ maxWidth: 320 }} value={orgId ?? ""} onChange={(e) => setOrgId(Number(e.target.value))}>
             {me.orgs.map((o) => (
               <option key={o.id} value={o.id}>
@@ -123,7 +123,7 @@ export function AdminHomeScreen() {
         </div>
       ) : null}
       {!orgId ? (
-        <Empty>{me.isLeadDashStaff ? "Pick an association, or add a new one." : "Your email is not on an association's admin team yet. Ask the association's owner to add you."}</Empty>
+        <Empty>{me.isLeadDashStaff ? "Pick an organization, or add a new one." : "Your email is not on an organization's admin team yet. Ask the organization's owner to add you."}</Empty>
       ) : events.isLoading ? (
         <PageLoading />
       ) : events.error ? (
@@ -172,10 +172,10 @@ function NewEventModal({ open, onClose, orgId }: { open: boolean; onClose: () =>
     <Modal open={open} onClose={onClose} title="New event">
       <div className="grid-2">
         <Field label="Event name" className="span-2">
-          <input className="input" value={f.name} onChange={set("name")} placeholder="NABC Annual Conference" />
+          <input className="input" value={f.name} onChange={set("name")} placeholder="Annual Conference" />
         </Field>
         <Field label="Short name (app header)">
-          <input className="input" value={f.shortName} onChange={set("shortName")} placeholder="NABC 2027" />
+          <input className="input" value={f.shortName} onChange={set("shortName")} placeholder="Conference 2027" />
         </Field>
         <Field label="Time zone">
           <select className="select" value={f.timezone} onChange={set("timezone")}>
@@ -232,9 +232,9 @@ function NewOrgModal({ open, onClose, onCreated }: { open: boolean; onClose: () 
   const create = trpc.core.org.create.useMutation();
   const [f, setF] = useState({ name: "", ownerEmail: "", ownerName: "" });
   return (
-    <Modal open={open} onClose={onClose} title="New association">
+    <Modal open={open} onClose={onClose} title="New organization">
       <div className="grid-2">
-        <Field label="Association name" className="span-2">
+        <Field label="Organization name" className="span-2">
           <input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
         </Field>
         <Field label="Owner's name">
@@ -269,7 +269,7 @@ function NewOrgModal({ open, onClose, onCreated }: { open: boolean; onClose: () 
   );
 }
 
-/** /admin/settings: association details, admin team, and (LeadDash staff) the platform connection. */
+/** /admin/settings: organization details, admin team, and (LeadDash staff) the platform connection. */
 export function OrgSettingsScreen() {
   const { orgId, me } = useAdmin();
   const utils = trpc.useUtils();
@@ -284,7 +284,7 @@ export function OrgSettingsScreen() {
   const [draft, setDraft] = useState<{ name: string; colorPrimary: string; colorAccent: string; logoFileId: number | null; logoUrl: string | null } | null>(null);
   const [invite, setInvite] = useState({ email: "", name: "" });
   const [loc, setLoc] = useState<string | null>(null);
-  if (!orgId) return <AdminPage title="Settings"><Empty>Pick an association on the Events screen first.</Empty></AdminPage>;
+  if (!orgId) return <AdminPage title="Settings"><Empty>Pick an organization on the Events screen first.</Empty></AdminPage>;
   if (org.isLoading) return <AdminPage title="Settings"><PageLoading /></AdminPage>;
   if (org.error) return <AdminPage title="Settings"><ErrorNote error={org.error} /></AdminPage>;
   const o = org.data!;
@@ -297,7 +297,7 @@ export function OrgSettingsScreen() {
       {params.get("platform") === "failed" ? <div className="banner banner-bad">The LeadDash platform connection did not finish. Try again.</div> : null}
       <div className="card card-pad">
         <EditSection
-          title="Association"
+          title="Organization"
           saving={update.isPending}
           onCancel={() => setDraft(null)}
           onSave={async () => {
@@ -396,7 +396,7 @@ export function OrgSettingsScreen() {
           <span className="h3" style={{ fontSize: 14 }}>LeadDash platform (LeadDash staff only)</span>
           <KV label="Marketplace app">{platform.data?.configured ? "Set on the server" : "GHL_CLIENT_ID and GHL_CLIENT_SECRET are not set"}</KV>
           <KV label="Agency authorization">{platform.data?.connected ? `Connected (${platform.data.companyId})` : "Not authorized yet"}</KV>
-          <KV label="This association's sub-account">{o.platformLocationId || "Not set"}</KV>
+          <KV label="This organization's sub-account">{o.platformLocationId || "Not set"}</KV>
           <div className="row gap-8 wrap">
             <button
               className="btn btn-sm"

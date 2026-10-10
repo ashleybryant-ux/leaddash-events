@@ -4,8 +4,8 @@
  * LeadDash Events runs on its own and never waits on the platform: contacts
  * and tags are put in an outbox and sent when the platform answers. The
  * agency authorizes the same marketplace app LeadDash EHR uses once (with this
- * app's callback added to the app's redirect URLs); each association's
- * sub-account token is minted from that agency token, so no association ever
+ * app's callback added to the app's redirect URLs); each organization's
+ * sub-account token is minted from that agency token, so no organization ever
  * pastes a key.
  */
 import { and, eq, isNull, lte } from "drizzle-orm";
@@ -114,7 +114,7 @@ async function upsertContact(locationId: string, c: ContactInput) {
   return id;
 }
 
-/** Queue a contact (and tags) for the association's sub-account. Does nothing if the association has no sub-account set. */
+/** Queue a contact (and tags) for the organization's sub-account. Does nothing if the organization has no sub-account set. */
 export function queueContact(orgId: number, contact: ContactInput) {
   const org = getDb().select().from(schema.organizations).where(eq(schema.organizations.id, orgId)).get();
   if (!org?.platformLocationId) return false;
@@ -122,7 +122,7 @@ export function queueContact(orgId: number, contact: ContactInput) {
   return true;
 }
 
-/** Texts are sent through the association's sub-account (its A2P-registered number). Returns false when texting is not set up. */
+/** Texts are sent through the organization's sub-account (its A2P-registered number). Returns false when texting is not set up. */
 export async function sendText(orgId: number, to: ContactInput & { phone: string }, message: string) {
   const org = getDb().select().from(schema.organizations).where(eq(schema.organizations.id, orgId)).get();
   if (ENV.isTest) {
@@ -150,7 +150,7 @@ export async function runOutbox() {
   for (const item of due) {
     const org = db.select().from(schema.organizations).where(eq(schema.organizations.id, item.orgId)).get();
     try {
-      if (!org?.platformLocationId) throw new Error("no sub-account set for this association");
+      if (!org?.platformLocationId) throw new Error("no sub-account set for this organization");
       await upsertContact(org.platformLocationId, item.payload as ContactInput);
       db.update(schema.platformOutbox).set({ sentAt: new Date(), lastError: null }).where(eq(schema.platformOutbox.id, item.id)).run();
     } catch (err) {

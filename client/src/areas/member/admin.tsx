@@ -1,5 +1,5 @@
 /**
- * Association admin screens for the member hub: Membership, Divisions and
+ * Organization admin screens for the member hub: Membership, Divisions and
  * committees, the Document library, and Reports across programs.
  * Every screen uses useAdmin().orgId; the server checks requireOrgAdmin.
  */
@@ -14,13 +14,13 @@ import { FileType, ROLE_LABEL, STATUS_LABEL, downloadText, readFileText, statusT
 
 type Outputs = RouterOutputs["member"]["admin"];
 
-/** Association screens need an association picked. */
+/** Organization screens need an organization picked. */
 function NeedsOrg({ title, children }: { title: string; children: (orgId: number) => ReactNode }) {
   const { orgId } = useAdmin();
   if (!orgId) {
     return (
       <AdminPage title={title}>
-        <Empty>Pick an association on the Events screen first.</Empty>
+        <Empty>Pick an organization on the Events screen first.</Empty>
       </AdminPage>
     );
   }
@@ -415,7 +415,7 @@ function HubSettings({ orgId }: { orgId: number }) {
                 <CopyButton text={s.data.hubUrl} />
               </span>
             </KV>
-            <KV label="Member ID prefix">{s.data.numberPrefix || `Made from the association (next ${s.data.nextNumber})`}</KV>
+            <KV label="Member ID prefix">{s.data.numberPrefix || `Made from the organization (next ${s.data.nextNumber})`}</KV>
             <KV label="Renewal link">{s.data.renewUrl}</KV>
           </div>
         }
@@ -787,7 +787,7 @@ const ACCESS_HELP: Record<AccessType, string> = {
   board: "Visible to members of the board group",
   group: "Visible to the members of one division or committee",
   level: "Visible to active members at one member level",
-  staff: "Visible to association staff only, never in the member app",
+  staff: "Visible to organization staff only, never in the member app",
 };
 
 export function AdminDocuments() {

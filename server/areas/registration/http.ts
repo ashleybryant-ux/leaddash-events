@@ -68,7 +68,7 @@ export async function handleStripeEvent(event: Stripe.Event) {
       return "account";
     }
     case "account.application.deauthorized": {
-      // The association removed LeadDash from its Stripe account.
+      // The organization removed LeadDash from its Stripe account.
       if (account) db.delete(schema.stripeAccounts).where(eq(schema.stripeAccounts.accountId, account)).run();
       return "deauthorized";
     }
@@ -159,7 +159,7 @@ export const EMBED_JS = `(function () {
 `;
 
 export function registerHttp(app: Express) {
-  // Stripe sends the association's admin back here after "Connect with Stripe".
+  // Stripe sends the organization's admin back here after "Connect with Stripe".
   app.get("/api/stripe/connect/callback", async (req, res) => {
     const back = (q: string) => res.redirect(`/admin/payments?${q}`);
     if (req.query.error) return back(`stripe=failed&reason=${encodeURIComponent(String(req.query.error_description || "The connection was cancelled."))}`);

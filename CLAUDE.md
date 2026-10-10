@@ -28,6 +28,7 @@ A conference app sold as LeadDash Events (first customer: NABC). Each event bran
 - Category filters on busy admin tabs use folder tabs (`FolderTabs`), not chip rows. Dates of birth are never asked. Typed dates are plain text or native date inputs, never custom wheels.
 - No cream or amber page backgrounds; pages use #F8FAFB. Amber pills and bars are fine.
 - Show real names, never ids, wherever the app says who did something.
+- Screens say "organization", never "association". Placeholders and sample text are generic: never a customer's real name or details (no NABC).
 - The LeadDash Events wordmark stays in the admin. An event's own logo and colors appear only on attendee-facing pages (the app, checkout page, emails, badges, certificates).
 - Every route checks access with `server/_core/access.ts` helpers. Attendees only see their own data. Staff see what their role allows.
 - Never commit keys, passwords or `.env`. No client or patient health information anywhere.

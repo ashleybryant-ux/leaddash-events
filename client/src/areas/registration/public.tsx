@@ -1,6 +1,6 @@
 /**
  * Public registration pages: the event landing page (/r/:slug), Register,
- * Pay (Stripe embedded checkout on the association's own account), the
+ * Pay (Stripe embedded checkout on the organization's own account), the
  * confirmation page, the website embed (/embed/:slug) and Get the app (/get/:slug).
  * Branded with the event's colors; no sign-in needed.
  */

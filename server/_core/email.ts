@@ -11,7 +11,7 @@ export const outbox: SentEmail[] = [];
 /**
  * Sends mail through Amazon SES with the server's AWS credentials (same
  * account and verified leaddash.io domain as LeadDash EHR and Employees).
- * `fromName` lets an event send as "NABC Conference Team <events@leaddash.io>".
+ * `fromName` lets an event send as "Conference Team <events@leaddash.io>".
  */
 export async function sendEmail(msg: SentEmail) {
   if (ENV.isTest) {

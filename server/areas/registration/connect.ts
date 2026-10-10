@@ -1,20 +1,20 @@
 /**
- * Stripe Connect for an association, set up the same way as LeadDash EHR
+ * Stripe Connect for an organization, set up the same way as LeadDash EHR
  * (stripeConnect.js, decision 2026-09-18):
  *
  * - LeadDash's platform account and its Connect app (STRIPE_SECRET_KEY,
  *   STRIPE_CONNECT_CLIENT_ID) are shared with LeadDash EHR.
- * - The association connects its OWN Stripe account (Standard) once, through
+ * - The organization connects its OWN Stripe account (Standard) once, through
  *   Stripe's "Connect with Stripe" screen (OAuth, read_write). No keys are
  *   copied by hand. It can sign in to an existing account or create one there.
- * - Every ticket is a direct charge on the association's account: it is the
+ * - Every ticket is a direct charge on the organization's account: it is the
  *   merchant of record, the money pays out to its bank, and disputes are its
  *   own, answered from its Stripe dashboard.
  * - LeadDash's optional fee rides on the charge as an application fee.
  *
  * Ways to pay: Checkout uses dynamic payment methods, so card, Apple Pay,
  * Google Pay, Klarna and Afterpay appear automatically when they are turned
- * on in the association's own Stripe dashboard (Settings, Payment methods)
+ * on in the organization's own Stripe dashboard (Settings, Payment methods)
  * and the buyer is eligible. We read the account's capabilities to show
  * which are on.
  */
@@ -33,7 +33,7 @@ export const connectRedirectUri = () => ENV.stripeConnectRedirect || `${ENV.appU
 
 const STATE_MINUTES = 30;
 
-/** A signed state that says which association started the connection and when. */
+/** A signed state that says which organization started the connection and when. */
 export function signState(orgId: number, userId: number, at = Date.now()) {
   const body = `${orgId}.${userId}.${at}`;
   return `${body}.${sign(`stripe-connect:${body}`)}`;
@@ -47,7 +47,7 @@ export function verifyState(state: string) {
   return { orgId: Number(orgId), userId: Number(userId) };
 }
 
-/** Stripe's "Connect with Stripe" page for this association. */
+/** Stripe's "Connect with Stripe" page for this organization. */
 export function connectUrl(orgId: number, userId: number) {
   const org = getDb().select().from(schema.organizations).where(eq(schema.organizations.id, orgId)).get();
   const q = new URLSearchParams({
@@ -62,7 +62,7 @@ export function connectUrl(orgId: number, userId: number) {
   return `https://connect.stripe.com/oauth/authorize?${q}`;
 }
 
-/** Stripe sent the association back with a code: exchange it and keep the account id. */
+/** Stripe sent the organization back with a code: exchange it and keep the account id. */
 export async function finishConnect(code: string, state: string) {
   const who = verifyState(state);
   if (!who) throw new Error("This connection did not start from LeadDash Events, or it took longer than 30 minutes. Start again.");
@@ -83,7 +83,7 @@ export async function finishConnect(code: string, state: string) {
   return { orgId: who.orgId, accountId, userId: who.userId };
 }
 
-/** Stops LeadDash's access to the account in Stripe, then forgets it. Nothing else changes in the association's Stripe account. */
+/** Stops LeadDash's access to the account in Stripe, then forgets it. Nothing else changes in the organization's Stripe account. */
 export async function disconnectAccount(orgId: number) {
   const row = accountRow(orgId);
   if (!row) return;

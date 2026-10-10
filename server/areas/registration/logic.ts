@@ -97,7 +97,7 @@ export function ticketsOnSale(ev: Event, opts: { onlyIds?: number[]; now?: Date 
     });
 }
 
-/** An active member of the association with this email. */
+/** An active member of the organization with this email. */
 export function isActiveMember(orgId: number, email: string, today: string) {
   const m = getDb()
     .select()

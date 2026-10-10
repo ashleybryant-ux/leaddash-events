@@ -1,11 +1,11 @@
 /**
- * Who may see and change what. Every route that touches an association,
+ * Who may see and change what. Every route that touches an organization,
  * event or person checks access with these helpers.
  *
  * - LeadDash staff (LEADDASH_STAFF_EMAILS) have tech-support access to every
- *   association and are never listed on an association's team.
- * - Association owners and admins (org_members) can do everything for every
- *   event their association runs.
+ *   organization and are never listed on an organization's team.
+ * - Organization owners and admins (org_members) can do everything for every
+ *   event their organization runs.
  * - Event staff (staff_roles + staff_assignments) get the areas their role
  *   allows, until the role's access ends.
  * - Attendees are matched by email: signing in with the email they registered
@@ -53,7 +53,7 @@ export function getEventBySlug(slug: string) {
 }
 
 export type EventAccess = {
-  /** Association admin (or LeadDash support): everything. */
+  /** Organization admin (or LeadDash support): everything. */
   admin: boolean;
   areas: Record<StaffArea, Access>;
   /** Built-in role kinds the person holds for this event. */
@@ -108,7 +108,7 @@ export function requireArea(user: User, eventId: number, area: StaffArea, level:
   return { event: getEvent(eventId), access };
 }
 
-/** Throws unless the person is an association admin for the event (or holds the event admin role). */
+/** Throws unless the person is an organization admin for the event (or holds the event admin role). */
 export function requireEventAdmin(user: User, eventId: number) {
   const access = eventAccess(user, eventId);
   if (!access.admin) throw forbidden();
@@ -145,7 +145,7 @@ export function requireAttendee(user: User, eventId: number) {
   return row;
 }
 
-/** The person's member record in an association, linking it to their sign-in the first time. */
+/** The person's member record in an organization, linking it to their sign-in the first time. */
 export function memberFor(user: User, orgId: number) {
   const db = getDb();
   let row = db

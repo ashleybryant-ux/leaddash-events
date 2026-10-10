@@ -1,6 +1,6 @@
 /**
  * Test helpers: a fresh in-memory database per test file, people, an
- * association with an event, and tRPC callers signed in as anyone.
+ * organization with an event, and tRPC callers signed in as anyone.
  */
 import { eq } from "drizzle-orm";
 import { useTestDb, getDb, schema } from "../server/_core/db";
@@ -38,7 +38,7 @@ export function caller(user?: { id: number } | null) {
 
 export const user = (email: string, name = "") => userForEmail(email, name);
 
-/** An association with an owner, and one event (seeded with each area's defaults). */
+/** An organization with an owner, and one event (seeded with each area's defaults). */
 export async function setupEvent(opts: { orgName?: string; ownerEmail?: string } = {}) {
   const db = getDb();
   const owner = user(opts.ownerEmail ?? "owner@example.org", "Olivia Owner");

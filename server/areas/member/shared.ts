@@ -1,5 +1,5 @@
 /**
- * Member hub helpers: finding the association and the member, the access
+ * Member hub helpers: finding the organization and the member, the access
  * rules for member content and folders, member numbers, and CSV.
  *
  * The LeadDash platform stays the record for dues and payments. The member
@@ -18,13 +18,13 @@ export const daysFromNow = (days: number) => new Date(Date.now() + days * 86400_
 
 export function orgBySlug(slug: string) {
   const org = getDb().select().from(schema.organizations).where(eq(schema.organizations.slug, slug)).get();
-  if (!org) throw notFound("That association");
+  if (!org) throw notFound("That organization");
   return org;
 }
 
 export function getOrg(orgId: number) {
   const org = getDb().select().from(schema.organizations).where(eq(schema.organizations.id, orgId)).get();
-  if (!org) throw notFound("That association");
+  if (!org) throw notFound("That organization");
   return org;
 }
 

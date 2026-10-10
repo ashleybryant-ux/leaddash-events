@@ -43,7 +43,7 @@ function memberRow(m: Member) {
 function checkPhoto(orgId: number, fileId: number | null) {
   if (!fileId) return;
   const f = getDb().select().from(schema.files).where(eq(schema.files.id, fileId)).get();
-  if (!f || f.orgId !== orgId) throw forbidden("That photo belongs to another association.");
+  if (!f || f.orgId !== orgId) throw forbidden("That photo belongs to another organization.");
 }
 
 /** Adds a member and queues the LeadDash platform contact (tag "member"). */
@@ -72,7 +72,7 @@ export function addMember(orgId: number, input: z.infer<typeof memberInput>) {
 
 // ---------- What members see ----------
 
-/** The association's events with the member's registration for each. */
+/** The organization's events with the member's registration for each. */
 function eventsFor(orgId: number, email: string) {
   const db = getDb();
   const evs = db.select().from(schema.events).where(and(eq(schema.events.orgId, orgId), ne(schema.events.status, "draft"))).orderBy(schema.events.startDate).all();
@@ -99,7 +99,7 @@ function eventsFor(orgId: number, email: string) {
   }));
 }
 
-/** CE hours this cycle (the last 2 years): certificates from the association's events plus CE entries. */
+/** CE hours this cycle (the last 2 years): certificates from the organization's events plus CE entries. */
 export function ceHoursThisCycle(orgId: number, email: string) {
   const db = getDb();
   const since = new Date(Date.now() - 730 * 86400_000);
@@ -197,7 +197,7 @@ function cardInfo(member: Member, org: { name: string; slug: string; logoFileId:
 }
 
 export const hubRouter = router({
-  /** Who the signed-in person is in this association (null when they are not a member). */
+  /** Who the signed-in person is in this organization (null when they are not a member). */
   me: protectedProcedure.input(z.object({ orgSlug: z.string().max(120) })).query(({ ctx, input }) => {
     const org = orgBySlug(input.orgSlug);
     const m = memberFor(ctx.user, org.id);
@@ -237,7 +237,7 @@ export const hubRouter = router({
     };
   }),
 
-  /** Upcoming association events, with Register or Open the app. */
+  /** Upcoming organization events, with Register or Open the app. */
   events: protectedProcedure.input(z.object({ orgSlug: z.string().max(120) })).query(({ ctx, input }) => {
     const { org, member } = hubMember(ctx.user, input.orgSlug);
     return eventsFor(org.id, member.email);

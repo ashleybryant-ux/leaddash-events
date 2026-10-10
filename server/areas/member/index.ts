@@ -1,5 +1,5 @@
 /**
- * The member hub (association-branded member app) and the association admin
+ * The member hub (organization-branded member app) and the organization admin
  * screens: Membership, Divisions and committees, Documents, Reports across
  * programs. The LeadDash platform stays the record for dues and payments.
  */
@@ -16,7 +16,7 @@ export const memberRouter = router({
   hub: hubRouter,
   groups: groupsHubRouter,
   docs: docsHubRouter,
-  /** Association admins (requireOrgAdmin). */
+  /** Organization admins (requireOrgAdmin). */
   admin: router({
     members: membersAdminRouter,
     groups: groupsAdminRouter,

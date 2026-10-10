@@ -68,11 +68,11 @@ function getDoc(orgId: number, documentId: number) {
   return { doc: d, folder };
 }
 
-/** The file must belong to the association; library files are always private. */
+/** The file must belong to the organization; library files are always private. */
 function claimFile(orgId: number, fileId: number) {
   const db = getDb();
   const f = db.select().from(schema.files).where(eq(schema.files.id, fileId)).get();
-  if (!f || f.orgId !== orgId) throw forbidden("That file belongs to another association.");
+  if (!f || f.orgId !== orgId) throw forbidden("That file belongs to another organization.");
   if (f.isPublic) db.update(schema.files).set({ isPublic: false }).where(eq(schema.files.id, f.id)).run();
   return f;
 }
@@ -242,7 +242,7 @@ export const docsAdminRouter = router({
 
 const slugInput = z.object({ orgSlug: z.string().max(120) });
 
-/** The member's certificates from the association's events (the "My certificates" folder). */
+/** The member's certificates from the organization's events (the "My certificates" folder). */
 function memberCertificates(orgId: number, email: string) {
   return getDb()
     .select({ id: schema.certificates.id, title: schema.certificates.title, hours: schema.certificates.hours, code: schema.certificates.code, createdAt: schema.certificates.createdAt, eventName: schema.events.name })

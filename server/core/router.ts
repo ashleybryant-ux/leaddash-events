@@ -45,7 +45,7 @@ export const coreRouter = router({
     /** Name, colors and logo for member-facing pages. */
     publicBySlug: publicProcedure.input(z.object({ slug: z.string().max(120) })).query(({ input }) => {
       const org = getDb().select().from(schema.organizations).where(eq(schema.organizations.slug, input.slug)).get();
-      if (!org) throw new TRPCError({ code: "NOT_FOUND", message: "That association was not found." });
+      if (!org) throw new TRPCError({ code: "NOT_FOUND", message: "That organization was not found." });
       return { id: org.id, name: org.name, slug: org.slug, colorPrimary: org.colorPrimary, colorAccent: org.colorAccent, logoUrl: fileUrl(org.logoFileId) };
     }),
 
@@ -55,13 +55,13 @@ export const coreRouter = router({
       return { ...org, logoUrl: fileUrl(org.logoFileId), role };
     }),
 
-    /** LeadDash staff set up a new association and its owner. */
+    /** LeadDash staff set up a new organization and its owner. */
     create: protectedProcedure
       .input(z.object({ name: z.string().min(2).max(120), ownerEmail: z.string().email(), ownerName: z.string().max(120).default("") }))
       .mutation(({ ctx, input }) => {
         if (!isLeadDashStaff(ctx.user)) throw forbidden();
         const db = getDb();
-        let slug = slugify(input.name) || "association";
+        let slug = slugify(input.name) || "organization";
         if (db.select().from(schema.organizations).where(eq(schema.organizations.slug, slug)).get()) slug = `${slug}-${Date.now().toString(36)}`;
         const org = db.insert(schema.organizations).values({ name: input.name, slug }).returning().get();
         const owner = userForEmail(input.ownerEmail, input.ownerName);
@@ -112,13 +112,13 @@ export const coreRouter = router({
       return { ok: true };
     }),
 
-    /** Every association (LeadDash staff only). */
+    /** Every organization (LeadDash staff only). */
     all: protectedProcedure.query(({ ctx }) => {
       if (!isLeadDashStaff(ctx.user)) throw forbidden();
       return getDb().select().from(schema.organizations).all();
     }),
 
-    /** LeadDash staff: which LeadDash platform sub-account the association mirrors contacts into. */
+    /** LeadDash staff: which LeadDash platform sub-account the organization mirrors contacts into. */
     setPlatformLocation: protectedProcedure
       .input(z.object({ orgId: z.number(), locationId: z.string().max(80).nullable() }))
       .mutation(({ ctx, input }) => {
@@ -142,7 +142,7 @@ export const coreRouter = router({
   }),
 
   events: router({
-    /** Events of an association (admins). */
+    /** Events of an organization (admins). */
     list: protectedProcedure.input(z.object({ orgId: z.number() })).query(({ ctx, input }) => {
       requireOrgAdmin(ctx.user, input.orgId);
       return getDb().select().from(schema.events).where(eq(schema.events.orgId, input.orgId)).orderBy(desc(schema.events.startDate)).all();
@@ -271,7 +271,7 @@ export const coreRouter = router({
   }),
 
   files: router({
-    /** Upload a file (base64). Admins upload for their association; attendees can upload their own photo. */
+    /** Upload a file (base64). Admins upload for their organization; attendees can upload their own photo. */
     upload: protectedProcedure
       .input(
         z.object({

@@ -1,5 +1,5 @@
 /**
- * The member hub frame (association branded): sign-in gate, the membership
+ * The member hub frame (organization branded): sign-in gate, the membership
  * gate, and the bottom nav (Home, My card, Events, Documents). Screens use
  * useMemberApp(). Lapsed members still get in: their card shows lapsed with
  * a renew prompt, and member content stays closed on the server.
@@ -55,7 +55,7 @@ export function MemberApp({ orgSlug, children }: { orgSlug: string; children: Re
   return <MemberCtx.Provider value={{ orgSlug, org: o, base: `/m/${orgSlug}`, member: me.data, email: auth.data.email }}>{children}</MemberCtx.Provider>;
 }
 
-/** Signed in, but the email is not on the association's member list. */
+/** Signed in, but the email is not on the organization's member list. */
 function NotAMember({ orgName, email, style }: { orgName: string; email: string; style: ReturnType<typeof brandStyle> }) {
   const utils = trpc.useUtils();
   const [location, navigate] = useLocation();

@@ -145,7 +145,7 @@ const vendorFields = z.object({
   leadScanning: z.boolean(),
 });
 
-/** Makes sure an uploaded file belongs to this event's association. */
+/** Makes sure an uploaded file belongs to this event's organization. */
 function checkFile(fileId: number | null, orgId: number) {
   if (!fileId) return;
   const f = getDb().select().from(schema.files).where(eq(schema.files.id, fileId)).get();

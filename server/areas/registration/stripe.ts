@@ -1,6 +1,6 @@
 /**
  * The Stripe client for LeadDash's platform account. Every payment call runs
- * on the association's connected account (direct charges) by passing
+ * on the organization's connected account (direct charges) by passing
  * `{ stripeAccount }` as the request option.
  *
  * Tests swap the client with setStripeClient() so nothing calls the real API.

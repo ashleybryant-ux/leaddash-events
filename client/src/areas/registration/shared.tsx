@@ -58,7 +58,7 @@ export function clearDraft(slug: string) {
   }
 }
 
-/** One Stripe.js instance per connected account (direct charges run on the association's account). */
+/** One Stripe.js instance per connected account (direct charges run on the organization's account). */
 const stripes = new Map<string, Promise<Stripe | null>>();
 export function stripeFor(publishableKey: string, accountId: string) {
   const key = `${publishableKey}:${accountId}`;

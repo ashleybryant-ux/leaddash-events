@@ -1,6 +1,6 @@
 /**
  * Registration admin: /admin/e/:eventId/registration?tab=tickets|checkout|welcome|payments
- * and the association's Stripe page /admin/payments.
+ * and the organization's Stripe page /admin/payments.
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useLocation, useSearch } from "wouter";
@@ -620,7 +620,7 @@ function CheckoutTab({ event, canEdit }: { event: AdminEvent; canEdit: boolean }
           Add the person to the LeadDash platform with the tag "{d.platformTag || defaultTag}"
         </label>
         {d.tagOn ? (
-          <Field label="Tag" className="" hint="Contacts go to the association's LeadDash platform account.">
+          <Field label="Tag" className="" hint="Contacts go to the organization's LeadDash platform account.">
             <input className="input" style={{ maxWidth: 320 }} maxLength={60} value={d.platformTag} onChange={(e) => set({ platformTag: e.target.value })} />
           </Field>
         ) : null}
@@ -1155,7 +1155,7 @@ function FollowUpEditor({ event, t, readOnly, onDone }: { event: AdminEvent; t: 
   );
 }
 
-/* ---------- Payments (event tab and association page) ---------- */
+/* ---------- Payments (event tab and organization page) ---------- */
 
 function useStartOnboarding(orgId: number) {
   const connect = trpc.registration.stripe.connect.useMutation();
@@ -1193,7 +1193,7 @@ function SetupPanel({ orgId, orgName, canManage }: { orgId: number; orgName: str
           Connect with Stripe
         </button>
       ) : (
-        <span className="small muted">An association admin connects Stripe on the association's Payments page.</span>
+        <span className="small muted">An organization admin connects Stripe on the organization's Payments page.</span>
       )}
     </div>
   );
@@ -1404,7 +1404,7 @@ function RecentPayments({ rows, canRefund, showEvent }: { rows: Payment[]; canRe
 function PaymentsTab({ event, status, canManage, canEdit }: { event: AdminEvent; status: RouterOutputs["registration"]["stripe"]["forEvent"]; canManage: boolean; canEdit: boolean }) {
   const { me } = useAdmin();
   const payments = trpc.registration.payments.list.useQuery({ eventId: event.id });
-  const orgName = (status.connected && status.businessName) || me.orgs.find((o) => o.id === event.orgId)?.name || "the association";
+  const orgName = (status.connected && status.businessName) || me.orgs.find((o) => o.id === event.orgId)?.name || "the organization";
   if (!status.connected) return <SetupPanel orgId={event.orgId} orgName={orgName} canManage={canManage} />;
   return (
     <>
@@ -1418,7 +1418,7 @@ function PaymentsTab({ event, status, canManage, canEdit }: { event: AdminEvent;
 
 export function OrgPaymentsScreen() {
   const { orgId, me } = useAdmin();
-  if (!orgId) return <AdminPage title="Payments"><Empty>Pick an association on the Events screen first.</Empty></AdminPage>;
+  if (!orgId) return <AdminPage title="Payments"><Empty>Pick an organization on the Events screen first.</Empty></AdminPage>;
   return <OrgPayments orgId={orgId} orgName={me.orgs.find((o) => o.id === orgId)?.name ?? ""} />;
 }
 
@@ -1454,7 +1454,7 @@ function OrgPayments({ orgId, orgName }: { orgId: number; orgName: string }) {
   }, [flag]);
 
   const s = status.data;
-  const name = (s?.connected && s.businessName) || orgName || "your association";
+  const name = (s?.connected && s.businessName) || orgName || "your organization";
   let body: ReactNode;
   if (status.isLoading || refresh.isPending) body = <PageLoading />;
   else if (status.error) body = <ErrorNote error={status.error} />;

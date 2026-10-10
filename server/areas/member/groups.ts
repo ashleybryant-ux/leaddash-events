@@ -77,7 +77,7 @@ function saveRoster(orgId: number, groupId: number, roster: { memberId: number; 
   const ids = roster.map((r) => r.memberId);
   if (ids.length) {
     const found = db.select({ id: schema.members.id }).from(schema.members).where(and(eq(schema.members.orgId, orgId), inArray(schema.members.id, ids))).all();
-    if (found.length !== new Set(ids).size) throw forbidden("Someone on that list is not a member of this association.");
+    if (found.length !== new Set(ids).size) throw forbidden("Someone on that list is not a member of this organization.");
   }
   const current = db.select().from(schema.groupMembers).where(eq(schema.groupMembers.groupId, groupId)).all();
   for (const c of current) if (!ids.includes(c.memberId)) db.delete(schema.groupMembers).where(eq(schema.groupMembers.id, c.id)).run();

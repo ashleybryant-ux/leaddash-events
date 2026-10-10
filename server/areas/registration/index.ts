@@ -1,6 +1,6 @@
 /**
  * Registration: tickets and coupons, the public checkout page (direct link
- * and embed), Stripe Connect payments on the association's own account, and
+ * and embed), Stripe Connect payments on the organization's own account, and
  * the welcome email with its follow-ups.
  */
 import { z } from "zod";
@@ -107,7 +107,7 @@ function publicEventInfo(ev: typeof schema.events.$inferSelect) {
   };
 }
 
-/** Whether this association can take card payments right now. */
+/** Whether this organization can take card payments right now. */
 function paymentsFor(orgId: number) {
   const row = accountRow(orgId);
   const ready = !!row && row.chargesEnabled && stripeConfigured() && (!!ENV.stripePublishable || ENV.isTest);
@@ -117,7 +117,7 @@ function paymentsFor(orgId: number) {
     accountId: ready ? row!.accountId : null,
     businessName: row?.businessName ?? "",
     refundPolicy: row?.refundPolicy ?? "",
-    /** Klarna and Afterpay are on in the association's Stripe account. */
+    /** Klarna and Afterpay are on in the organization's Stripe account. */
     klarna: row?.payMethods.klarna === "active",
     afterpay: row?.payMethods.afterpay === "active",
   };
@@ -449,7 +449,7 @@ const paymentRouter = router({
     });
   }),
 
-  /** Recent payments across every event of the association (the association's Payments page). */
+  /** Recent payments across every event of the organization (the organization's Payments page). */
   forOrg: protectedProcedure.input(orgIn).query(({ ctx, input }) => {
     requireOrgAdmin(ctx.user, input.orgId);
     const db = getDb();
@@ -549,7 +549,7 @@ export const registrationRouter = router({
 
   /**
    * Creates the order. Free totals register right away; paid totals get an
-   * embedded Stripe Checkout Session on the association's own account.
+   * embedded Stripe Checkout Session on the organization's own account.
    */
   start: publicProcedure
     .input(slugIn.extend({ ticketId: z.number().int().positive(), buyer: buyerIn, coupon: z.string().max(40).optional(), embed: z.boolean().default(false) }))
@@ -588,7 +588,7 @@ export const registrationRouter = router({
           {
             ui_mode: "embedded_page",
             mode: "payment",
-            // Dynamic payment methods: whatever the association turned on in its Stripe dashboard
+            // Dynamic payment methods: whatever the organization turned on in its Stripe dashboard
             // (card, Apple Pay, Google Pay, Klarna, Afterpay) shows when the buyer is eligible.
             ...(checkoutPageFor(ev.id).payOverTime ? {} : { excluded_payment_method_types: ["klarna", "afterpay_clearpay"] as Stripe.Checkout.SessionCreateParams.ExcludedPaymentMethodType[] }),
             line_items: [

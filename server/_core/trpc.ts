@@ -9,7 +9,7 @@ export const router = t.router;
 export const publicProcedure = t.procedure;
 export const mergeRouters = t.mergeRouters;
 
-/** Signed in. Access to a specific association, event or record is checked inside each route with the helpers in access.ts. */
+/** Signed in. Access to a specific organization, event or record is checked inside each route with the helpers in access.ts. */
 export const protectedProcedure = t.procedure.use(
   t.middleware(({ ctx, next }) => {
     if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });

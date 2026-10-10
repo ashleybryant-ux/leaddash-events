@@ -139,7 +139,7 @@ async function emailCertificate(c: Cert) {
   });
 }
 
-/** The certificates and hours a person earned with an association, across all its events, plus CE entered outside events. */
+/** The certificates and hours a person earned with an organization, across all its events, plus CE entered outside events. */
 export function transcriptFor(orgId: number, email: string) {
   const db = getDb();
   const clean = email.toLowerCase();
@@ -359,7 +359,7 @@ export const certificatesRouter = router({
     };
   }),
 
-  /** Attendee: every year with this association. */
+  /** Attendee: every year with this organization. */
   transcript: protectedProcedure.input(z.object({ slug: z.string().max(120) })).query(({ ctx, input }) => {
     const ev = getEventBySlug(input.slug);
     const a = requireAttendee(ctx.user, ev.id);
