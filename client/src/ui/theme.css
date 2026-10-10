@@ -181,19 +181,50 @@ h1, h2, h3 { margin: 0; }
 
 /* ---------- Admin layout ---------- */
 .admin { min-height: 100dvh; display: flex; background: var(--ground); }
-.admin-aside { width: 240px; flex-shrink: 0; background: var(--side); color: #FFFFFF; padding: 22px 16px; display: flex; flex-direction: column; gap: 22px; position: sticky; top: 0; height: 100dvh; overflow-y: auto; }
-.admin-aside nav { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
-.admin-aside nav a { color: var(--side-text); text-decoration: none; padding: 10px 12px; border-radius: 8px; }
-.admin-aside nav a[aria-current="page"] { color: #FFFFFF; font-weight: 700; background: var(--brand); }
-.admin-aside nav.sub { gap: 2px; font-size: 13px; }
-.admin-aside nav.sub a { padding: 7px 12px; }
-.admin-aside nav.sub a[aria-current="page"] { background: var(--brand-mid); }
-.admin-aside .nav-label { padding: 0 12px 6px; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--side-muted); }
+.admin-rail { width: 92px; flex-shrink: 0; background: var(--side); color: #FFFFFF; padding: 16px 8px; display: flex; flex-direction: column; gap: 8px; position: sticky; top: 0; height: 100dvh; overflow-y: auto; }
+.rail-logo { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 2px 0 10px; text-decoration: none; color: #FFFFFF; }
+.rail-word { display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
+.rail-word b { font-size: 11px; font-weight: 800; letter-spacing: 0.06em; }
+.rail-word span { font-size: 8px; font-weight: 800; letter-spacing: 0.2em; color: var(--accent); }
+.admin-rail nav { display: flex; flex-direction: column; gap: 4px; }
+.admin-rail nav a, .rail-signout { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 4px; border-radius: 10px; color: var(--side-text); text-decoration: none; font-size: 11px; font-weight: 700; text-align: center; line-height: 1.2; }
+.admin-rail nav a:hover, .rail-signout:hover { background: #16382E; color: #FFFFFF; }
+.admin-rail nav a[aria-current="page"] { background: var(--brand); color: #FFFFFF; }
+.rail-signout { margin-top: auto; border: none; background: none; cursor: pointer; width: 100%; }
+.admin-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-height: 38px; }
+.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; flex: 1; min-width: 0; }
+.crumbs a { color: var(--brand); font-weight: 600; text-decoration: none; }
+.crumbs a:hover { text-decoration: underline; }
+.crumb-sep { color: #9DB3AB; }
+.crumb-here { font-weight: 700; color: var(--ink); }
+.find-page { position: relative; display: flex; align-items: center; gap: 8px; height: 38px; width: 260px; max-width: 100%; padding: 0 10px; border: 1px solid var(--field); border-radius: 8px; background: #FFFFFF; color: var(--muted); }
+.find-page:focus-within { border-color: var(--brand); outline: 2px solid var(--brand-tint); }
+.find-page input { border: none; outline: none; background: transparent; width: 100%; font-size: 13px; color: var(--ink); }
+.find-hits { position: absolute; top: 42px; right: 0; left: 0; min-width: 280px; background: #FFFFFF; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 24px rgba(15, 42, 35, 0.15); padding: 6px; display: flex; flex-direction: column; z-index: 30; }
+.find-hits button { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 8px 10px; border: none; background: none; border-radius: 6px; text-align: left; cursor: pointer; font-size: 13px; color: var(--ink); }
+.find-hits button:hover, .find-hits button:focus { background: var(--brand-tint-2); outline: none; }
+.page-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.page-tabs a { height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line); background: #FFFFFF; color: var(--ink); font-size: 13px; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; white-space: nowrap; }
+.page-tabs a:hover { border-color: var(--brand); color: var(--brand); }
+.page-tabs a[aria-current="page"] { background: var(--brand-tint); border-color: var(--brand); color: var(--brand); font-weight: 800; }
+.home-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 1100px) { .home-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .home-tiles { grid-template-columns: 1fr; } }
+.home-tile { background: #FFFFFF; border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.home-tile .tile-icon { width: 40px; height: 40px; }
+.home-tile .links { display: flex; flex-wrap: wrap; gap: 6px; }
+.home-tile .links a { height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--brand-tint-2); color: var(--ink); font-size: 13px; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; }
+.home-tile .links a:hover { border-color: var(--brand); color: var(--brand); }
+.step { display: flex; align-items: center; gap: 10px; font-size: 14px; min-height: 34px; }
+.step-dot { width: 22px; height: 22px; border-radius: 11px; border: 2px solid #C9D5D0; display: flex; align-items: center; justify-content: center; color: #FFFFFF; flex-shrink: 0; }
+.step.done .step-dot { background: var(--brand); border-color: var(--brand); }
+.step.done .step-label { color: var(--muted); text-decoration: line-through; }
 .admin-main { flex: 1; min-width: 0; padding: 28px 32px; display: flex; flex-direction: column; gap: 20px; }
 .admin-menu-btn { display: none; }
 @media (max-width: 900px) {
-  .admin-aside { position: fixed; left: 0; top: 0; z-index: 40; transform: translateX(-100%); transition: transform 0.2s; }
-  .admin-aside.open { transform: none; }
+  .admin-rail { position: fixed; left: 0; top: 0; z-index: 40; transform: translateX(-100%); transition: transform 0.2s; }
+  .admin-rail.open { transform: none; }
+  .find-page { width: 100%; }
   .admin-main { padding: 16px; }
   .admin-menu-btn { display: inline-flex; }
 }

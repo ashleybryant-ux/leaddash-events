@@ -1320,16 +1320,7 @@ export function AdminBrandingScreen() {
   const [badge, setBadge] = useState<Badge | null>(null);
   const [matching, setMatching] = useState(false);
   const [previewOf, setPreviewOf] = useState<"app" | "checkout" | "email">("app");
-  const tabs = can("attendees") ? (
-    <FolderTabs
-      tabs={[
-        { key: "attendees", label: "Attendees" },
-        { key: "branding", label: "Branding" },
-      ]}
-      value="branding"
-      hrefFor={(k) => (k === "attendees" ? `/admin/e/${event.id}/attendees` : `/admin/e/${event.id}/branding`)}
-    />
-  ) : null;
+  const tabs = null;
   if (q.isLoading) return <AdminPage title={event.name} sub={dateSub(event)}><PageLoading /></AdminPage>;
   if (q.error) return <AdminPage title={event.name} sub={dateSub(event)}><ErrorNote error={q.error} /></AdminPage>;
   const b = q.data!;

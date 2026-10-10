@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
 import { getDb, schema } from "../_core/db";
 import { attendeeFor, eventAccess, forbidden, getEvent, getEventBySlug, isLeadDashStaff, memberFor, orgRole, requireEventAdmin, requireOrgAdmin, audit } from "../_core/access";
@@ -71,13 +71,13 @@ export const coreRouter = router({
       }),
 
     update: protectedProcedure
-      .input(z.object({ orgId: z.number(), name: z.string().min(2).max(120), colorPrimary: hex, colorAccent: hex, logoFileId: z.number().nullable(), allEvents: z.boolean().default(false) }))
+      .input(z.object({ orgId: z.number(), name: z.string().min(2).max(120), colorPrimary: hex, colorAccent: hex, logoFileId: z.number().nullable(), allEvents: z.boolean().default(false), memberHub: z.boolean().optional() }))
       .mutation(({ ctx, input }) => {
         requireOrgAdmin(ctx.user, input.orgId);
         const db = getDb();
         const before = db.select().from(schema.organizations).where(eq(schema.organizations.id, input.orgId)).get();
         db.update(schema.organizations)
-          .set({ name: input.name, colorPrimary: input.colorPrimary, colorAccent: input.colorAccent, logoFileId: input.logoFileId })
+          .set({ name: input.name, colorPrimary: input.colorPrimary, colorAccent: input.colorAccent, logoFileId: input.logoFileId, ...(input.memberHub === undefined ? {} : { memberHub: input.memberHub }) })
           .where(eq(schema.organizations.id, input.orgId))
           .run();
         // Events that still use the organization's colors or logo follow the change.
@@ -194,6 +194,57 @@ export const coreRouter = router({
         audit(ctx.user, { orgId: input.orgId, eventId: ev.id, action: "event.create", detail: ev.name });
         return ev;
       }),
+
+    /** Event home: what is left to set up, and a count for each part of the event the person may open. */
+    home: protectedProcedure.input(z.object({ eventId: z.number() })).query(({ ctx, input }) => {
+      const access = eventAccess(ctx.user, input.eventId);
+      const ev = getEvent(input.eventId);
+      const can = (a: keyof typeof access.areas) => access.areas[a] !== "none";
+      if (!access.admin && !Object.values(access.areas).some((v) => v !== "none") && !access.kinds.size) throw forbidden();
+      const db = getDb();
+      const n = (table: { eventId: unknown } & object, ...where: unknown[]) =>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        db.select({ c: count() }).from(table as any).where(and(eq((table as any).eventId, ev.id), ...(where as any[]))).get()?.c ?? 0;
+      const s = schema;
+      const sessions = n(s.sessions);
+      const speakers = n(s.speakers);
+      const toReview = n(s.proposals, inArray(s.proposals.status, ["submitted", "in_review"]));
+      const registered = n(s.attendees, eq(s.attendees.status, "registered"));
+      const tickets = n(s.ticketTypes, eq(s.ticketTypes.active, true));
+      const sales = db.select({ c: sql<number>`coalesce(sum(${s.orders.amountCents}), 0)` }).from(s.orders).where(and(eq(s.orders.eventId, ev.id), eq(s.orders.status, "paid"))).get()?.c ?? 0;
+      const staff = db.select({ c: count() }).from(s.staffAssignments).innerJoin(s.staffRoles, eq(s.staffRoles.id, s.staffAssignments.roleId)).where(eq(s.staffRoles.eventId, ev.id)).get()?.c ?? 0;
+      const evaluations = n(s.evaluations);
+      const templates = n(s.certificateTemplates);
+      const issued = n(s.certificates, isNull(s.certificates.revokedAt));
+      const sent = n(s.announcements, isNotNull(s.announcements.sentAt));
+      const stripe = db.select().from(s.stripeAccounts).where(eq(s.stripeAccounts.orgId, ev.orgId)).get();
+      const b = ev.branding;
+      const steps = [
+        { key: "stripe", label: "Connect Stripe", done: !!stripe?.chargesEnabled, href: "/admin/payments", show: access.admin },
+        { key: "tickets", label: "Add tickets", done: tickets > 0, href: `/admin/e/${ev.id}/registration?tab=tickets`, show: can("registration") },
+        { key: "look", label: "Set the app's look", done: !!(b.logoFileId || b.coverFileId), href: `/admin/e/${ev.id}/branding`, show: access.admin },
+        { key: "sessions", label: "Add sessions", done: sessions > 0, href: `/admin/e/${ev.id}/sessions`, show: can("sessions") },
+        { key: "speakers", label: "Add speakers", done: speakers > 0, href: `/admin/e/${ev.id}/speakers`, show: can("speakers") },
+        { key: "certificates", label: "Set up CE certificates", done: templates > 0, href: `/admin/e/${ev.id}/certificates`, show: can("certificates") },
+        { key: "live", label: "Open the app to attendees", done: ev.status !== "draft", href: `/admin/e/${ev.id}/settings`, show: access.admin },
+      ]
+        .filter((x) => x.show)
+        .map(({ show: _s, ...x }) => x);
+      return {
+        steps,
+        counts: {
+          sessions,
+          speakers,
+          toReview,
+          registered,
+          sales: can("registration") ? Number(sales) : null,
+          staff,
+          evaluations,
+          issued,
+          sent,
+        },
+      };
+    }),
 
     /** One event for the admin screens, with what the signed-in person may open. */
     get: protectedProcedure.input(z.object({ eventId: z.number() })).query(({ ctx, input }) => {

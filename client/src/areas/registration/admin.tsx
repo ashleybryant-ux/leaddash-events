@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useLocation, useSearch } from "wouter";
 import { trpc, type RouterOutputs } from "../../lib/trpc";
 import { AdminPage, useAdmin, useAdminEvent } from "../../shells/AdminShell";
-import { CopyButton, EditSection, Empty, ErrorNote, ExpandRow, Field, FolderTabs, KV, Kpi, PageLoading, Pill, THead, UploadButton, confirmAction } from "../../ui/components";
+import { CopyButton, EditSection, Empty, ErrorNote, ExpandRow, Field, KV, Kpi, PageLoading, Pill, THead, UploadButton, confirmAction } from "../../ui/components";
 import { IconCard } from "../../ui/icons";
 import { errorText, toast } from "../../ui/toast";
 import { fmtDate, fmtDates, fmtMoney, fmtTime, fmtWhen, slugify } from "@shared/format";
@@ -23,7 +23,7 @@ const TABS = [
   { key: "tickets", label: "Tickets" },
   { key: "checkout", label: "Checkout page" },
   { key: "welcome", label: "Welcome email" },
-  { key: "payments", label: "Payments" },
+  { key: "payments", label: "Sales and payments" },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
 
@@ -72,10 +72,11 @@ export function RegistrationScreen() {
   const canEdit = can("registration", "edit");
   const go = (t: Tab) => navigate(`${location}?tab=${t}`);
   const link = `${window.location.origin}/r/${event.slug}`;
-  if (!can("registration")) return <AdminPage title="Registration"><Empty>Your role does not include registration.</Empty></AdminPage>;
+  const title = TABS.find((t) => t.key === tab)!.label;
+  if (!can("registration")) return <AdminPage title={title}><Empty>Your role does not include tickets and sales.</Empty></AdminPage>;
   return (
     <AdminPage
-      title="Registration"
+      title={title}
       actions={
         <>
           <a className="btn" href={`/r/${event.slug}`} target="_blank" rel="noreferrer">
@@ -87,7 +88,6 @@ export function RegistrationScreen() {
       banner={<StripeBar status={status.data} onSettings={tab === "payments" ? undefined : () => go("payments")} />}
     >
       <div className="col" style={{ gap: 0 }}>
-        <FolderTabs tabs={TABS.map((t) => ({ key: t.key, label: t.label }))} value={tab} onChange={go} />
         <div className="folder-body">
           {tab === "tickets" ? <TicketsTab event={event} canEdit={canEdit} /> : null}
           {tab === "checkout" ? <CheckoutTab event={event} canEdit={canEdit} /> : null}

@@ -19,6 +19,8 @@ export const organizations = sqliteTable("organizations", {
   colorAccent: text("color_accent").notNull().default("#e88a3a"),
   /** LeadDash platform (GoHighLevel) sub-account this association mirrors contacts into. */
   platformLocationId: text("platform_location_id"),
+  /** Whether the organization uses the member hub (Members, Divisions and committees, Documents). Off hides them from the admin menu. */
+  memberHub: integer("member_hub", { mode: "boolean" }).notNull().default(true),
   createdAt: createdAt(),
 });
 

@@ -15,6 +15,13 @@
       "when": 1791651494770,
       "tag": "0001_stripe_connect_pay_over_time",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1791663861129,
+      "tag": "0002_org_member_hub",
+      "breakpoints": true
     }
   ]
 }

@@ -2,12 +2,12 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { trpc } from "../lib/trpc";
-import { AdminPage, useAdmin, useAdminEvent } from "../shells/AdminShell";
+import { AdminPage, useAdmin, useAdminEvent, visibleGroups } from "../shells/AdminShell";
 import { EditSection, Empty, ErrorNote, Field, KV, Modal, PageLoading, Pill, UploadButton, confirmAction } from "../ui/components";
 import { errorText, toast } from "../ui/toast";
-import { fmtDates } from "@shared/format";
+import { fmtDates, fmtMoney } from "@shared/format";
 import { SignIn } from "./SignIn";
-import { IconLeaf } from "../ui/icons";
+import { IconCheck, IconLeaf } from "../ui/icons";
 
 /** "/": where a signed-in person goes (their events, member hubs, admin). */
 export function HomeScreen() {
@@ -148,7 +148,7 @@ export function AdminHomeScreen() {
                 <div>
                   <Pill tone={e.status === "live" ? "green" : e.status === "draft" ? "orange" : "gray"}>{e.status === "live" ? "Live" : e.status === "draft" ? "Draft" : "Ended"}</Pill>
                 </div>
-                <Link className="btn btn-sm btn-w" href={`/admin/e/${e.id}/sessions`}>
+                <Link className="btn btn-sm btn-w" href={`/admin/e/${e.id}`}>
                   Open
                 </Link>
               </div>
@@ -211,7 +211,7 @@ function NewEventModal({ open, onClose, orgId }: { open: boolean; onClose: () =>
               const ev = await create.mutateAsync({ orgId: orgId!, ...f });
               await utils.core.events.list.invalidate();
               onClose();
-              navigate(`/admin/e/${ev.id}/sessions`);
+              navigate(`/admin/e/${ev.id}`);
             } catch (err) {
               toast(errorText(err), true);
             }
@@ -278,23 +278,23 @@ export function OrgSettingsScreen() {
   const update = trpc.core.org.update.useMutation();
   const addAdmin = trpc.core.org.addAdmin.useMutation();
   const removeAdmin = trpc.core.org.removeAdmin.useMutation();
-  const [draft, setDraft] = useState<{ name: string; colorPrimary: string; colorAccent: string; logoFileId: number | null; logoUrl: string | null; allEvents?: boolean } | null>(null);
+  const [draft, setDraft] = useState<{ name: string; colorPrimary: string; colorAccent: string; logoFileId: number | null; logoUrl: string | null; allEvents?: boolean; memberHub: boolean } | null>(null);
   const [invite, setInvite] = useState({ email: "", name: "" });
-  if (!orgId) return <AdminPage title="Settings"><Empty>Pick an organization on the Events screen first.</Empty></AdminPage>;
-  if (org.isLoading) return <AdminPage title="Settings"><PageLoading /></AdminPage>;
-  if (org.error) return <AdminPage title="Settings"><ErrorNote error={org.error} /></AdminPage>;
+  if (!orgId) return <AdminPage title="Organization settings"><Empty>Pick an organization on the Events screen first.</Empty></AdminPage>;
+  if (org.isLoading) return <AdminPage title="Organization settings"><PageLoading /></AdminPage>;
+  if (org.error) return <AdminPage title="Organization settings"><ErrorNote error={org.error} /></AdminPage>;
   const o = org.data!;
-  const d = draft ?? { name: o.name, colorPrimary: o.colorPrimary, colorAccent: o.colorAccent, logoFileId: o.logoFileId, logoUrl: o.logoUrl };
+  const d = draft ?? { name: o.name, colorPrimary: o.colorPrimary, colorAccent: o.colorAccent, logoFileId: o.logoFileId, logoUrl: o.logoUrl, memberHub: o.memberHub };
   return (
-    <AdminPage title="Settings" sub={o.name}>
+    <AdminPage title="Organization settings" sub={o.name}>
       <div className="card card-pad">
         <EditSection
           title="Organization"
           saving={update.isPending}
           onCancel={() => setDraft(null)}
           onSave={async () => {
-            const res = await update.mutateAsync({ orgId, name: d.name, colorPrimary: d.colorPrimary, colorAccent: d.colorAccent, logoFileId: d.logoFileId, allEvents: !!d.allEvents });
-            await Promise.all([utils.core.org.get.invalidate(), utils.core.events.invalidate(), utils.program.branding.invalidate()]);
+            const res = await update.mutateAsync({ orgId, name: d.name, colorPrimary: d.colorPrimary, colorAccent: d.colorAccent, logoFileId: d.logoFileId, allEvents: !!d.allEvents, memberHub: d.memberHub });
+            await Promise.all([utils.core.org.get.invalidate(), utils.core.org.all.invalidate(), utils.auth.me.invalidate(), utils.core.events.invalidate(), utils.program.branding.invalidate()]);
             setDraft(null);
             toast(res.eventsUpdated ? `Saved. ${res.eventsUpdated === 1 ? "1 event uses" : `${res.eventsUpdated} events use`} the new look.` : "Saved");
           }}
@@ -308,7 +308,7 @@ export function OrgSettingsScreen() {
                 </span>
               </KV>
               <KV label="Logo">{o.logoUrl ? <img src={o.logoUrl} alt="Logo" style={{ height: 36 }} /> : null}</KV>
-              <KV label="Member hub link">{`${window.location.origin}/m/${o.slug}`}</KV>
+              <KV label="Member hub">{o.memberHub ? `On · ${window.location.origin}/m/${o.slug}` : "Off"}</KV>
             </div>
           }
           edit={
@@ -334,6 +334,10 @@ export function OrgSettingsScreen() {
                 <label className="check">
                   <input type="checkbox" checked={!!d.allEvents} onChange={(e) => setDraft({ ...d, allEvents: e.target.checked })} />
                   Use these colors and logo on every event
+                </label>
+                <label className="check">
+                  <input type="checkbox" checked={d.memberHub} onChange={(e) => setDraft({ ...d, memberHub: e.target.checked })} />
+                  Use the member hub (Members, Divisions and committees, Documents)
                 </label>
               </div>
             </div>
@@ -446,6 +450,85 @@ export function LeadDashToolsScreen() {
             </button>
           </div>
         </div>
+    </AdminPage>
+  );
+}
+
+/** /admin/e/:id: the event home. What is left to set up, then a tile for each part of the event. */
+export function EventHomeScreen() {
+  const ev = useAdminEvent();
+  const { me, orgId } = useAdmin();
+  const [, navigate] = useLocation();
+  const home = trpc.core.events.home.useQuery({ eventId: ev.id });
+  const isOrgAdmin = !!orgId && (me.orgs.some((o) => o.id === orgId) || me.isLeadDashStaff);
+  const events = trpc.core.events.list.useQuery({ orgId: orgId ?? 0 }, { enabled: isOrgAdmin });
+  const groups = visibleGroups(ev);
+  const c = home.data?.counts;
+  const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+  const stat: Record<string, string> = c
+    ? {
+        program: [plural(c.sessions, "session"), plural(c.speakers, "speaker"), c.toReview ? `${plural(c.toReview, "proposal")} to review` : ""].filter(Boolean).join(" · "),
+        tickets: [plural(c.registered, "person", "people") + " registered", c.sales !== null ? `${fmtMoney(c.sales, "$0.00")} in sales` : ""].filter(Boolean).join(" · "),
+        people: [plural(c.registered, "attendee"), plural(c.staff, "staff member")].join(" · "),
+        ce: [plural(c.evaluations, "evaluation"), `${plural(c.issued, "certificate")} issued`].join(" · "),
+        app: `${plural(c.sent, "announcement")} sent`,
+        setup: ev.status === "live" ? "The app is open to attendees" : ev.status === "ended" ? "The event has ended" : "The app is not open to attendees yet",
+      }
+    : {};
+  const steps = home.data?.steps ?? [];
+  const left = steps.filter((x) => !x.done).length;
+  return (
+    <AdminPage
+      title={ev.name}
+      sub={`${fmtDates(ev.startDate, ev.endDate)}${ev.venueName ? ` · ${ev.venueName}` : ""}`}
+      actions={
+        isOrgAdmin && (events.data?.length ?? 0) > 1 ? (
+          <select className="select" aria-label="Switch event" style={{ height: 40, minWidth: 220 }} value="" onChange={(e) => e.target.value && navigate(`/admin/e/${e.target.value}`)}>
+            <option value="">Switch event</option>
+            {events.data!.filter((x) => x.id !== ev.id).map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.name} ({fmtDates(x.startDate, x.endDate)})
+              </option>
+            ))}
+          </select>
+        ) : null
+      }
+    >
+      {home.error ? <ErrorNote error={home.error} /> : null}
+      {steps.length && left ? (
+        <div className="card card-pad col gap-8">
+          <span className="h3">Getting ready</span>
+          {steps.map((x) => (
+            <div key={x.key} className={`step${x.done ? " done" : ""}`}>
+              <span className="step-dot">{x.done ? <IconCheck size={14} /> : null}</span>
+              <span className="step-label grow">{x.label}</span>
+              {!x.done ? (
+                <Link className="btn btn-sm btn-w" href={x.href}>
+                  Open
+                </Link>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <div className="home-tiles">
+        {groups.map((g) => (
+          <div key={g.key} className="home-tile">
+            <div className="row gap-10">
+              <span className="tile-icon">{g.icon}</span>
+              <span className="h3" style={{ fontSize: 16 }}>{g.label}</span>
+            </div>
+            <span className="small muted" style={{ fontSize: 13, minHeight: 18 }}>{stat[g.key] ?? ""}</span>
+            <div className="links">
+              {g.items.map((i) => (
+                <Link key={i.href} href={i.href}>
+                  {i.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     </AdminPage>
   );
 }

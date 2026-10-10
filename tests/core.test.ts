@@ -44,4 +44,20 @@ describe("sign-in and access", () => {
     expect(after(event.id)).toMatchObject({ colorPrimary: "#7B219F", colorAccent: "#7A7A7A" });
     expect(after(other.id)).toMatchObject({ colorPrimary: "#123456", colorAccent: "#654321" });
   });
+  it("shows the event home checklist and counts, and keeps attendees out", async () => {
+    const { org, event, admin } = await setupEvent();
+    const home = await admin.core.events.home({ eventId: event.id });
+    expect(home.steps.map((x) => x.key)).toEqual(["stripe", "tickets", "look", "sessions", "speakers", "certificates", "live"]);
+    expect(home.steps.find((x) => x.key === "live")?.done).toBe(false);
+    expect(home.counts).toMatchObject({ sessions: 0, registered: 0, sales: 0 });
+    addAttendee(event.id, "a@example.com");
+    expect((await admin.core.events.home({ eventId: event.id })).counts.registered).toBe(1);
+    const stranger = caller(user("stranger@example.com"));
+    await expect(stranger.core.events.home({ eventId: event.id })).rejects.toThrow();
+
+    // The member hub can be turned off for an organization that does not use it.
+    await admin.core.org.update({ orgId: org.id, name: org.name, colorPrimary: "#1F5F4A", colorAccent: "#E88A3A", logoFileId: null, memberHub: false });
+    expect((await admin.core.org.get({ orgId: org.id })).memberHub).toBe(false);
+    expect((await admin.auth.me())?.orgs[0].memberHub).toBe(false);
+  });
 });

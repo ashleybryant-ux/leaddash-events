@@ -38,3 +38,11 @@ export const IconMenu = ({ size, ...p }: P) => (<svg {...base(size)} {...p}><pat
 export const IconLeaf = ({ size = 26 }: P) => (
   <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20C4 10 10 4 20 4c0 10-6 16-16 16z" fill="#e88a3a" /><path d="M4 20L14 10" stroke="#0F2A23" strokeWidth="1.6" /></svg>
 );
+export const IconTicket = ({ size, ...p }: P) => (<svg {...base(size)} {...p}><path d="M3 8a2 2 0 002-2h14a2 2 0 002 2v2a2 2 0 000 4v2a2 2 0 01-2 2H5a2 2 0 01-2-2v-2a2 2 0 000-4z" /><path d="M13 7v10" strokeDasharray="2 2" /></svg>);
+export const IconPhone = ({ size, ...p }: P) => (<svg {...base(size)} {...p}><rect x="6" y="2.5" width="12" height="19" rx="2.5" /><path d="M10.5 18.5h3" /></svg>);
+export const IconGear = ({ size, ...p }: P) => (<svg {...base(size)} {...p}><circle cx="12" cy="12" r="3" /><path d="M12 2.5v3M12 18.5v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2.5 12h3M18.5 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" /></svg>);
+export const IconMoney = ({ size, ...p }: P) => (<svg {...base(size)} {...p}><rect x="2.5" y="6" width="19" height="12" rx="2" /><circle cx="12" cy="12" r="2.5" /></svg>);
+export const IconChart = ({ size, ...p }: P) => (<svg {...base(size)} {...p}><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></svg>);
+export const IconStar = ({ size, ...p }: P) => (<svg {...base(size)} {...p}><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z" /></svg>);
+export const IconTools = ({ size, ...p }: P) => (<svg {...base(size)} {...p}><path d="M14.7 6.3a4 4 0 00-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 005.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z" /></svg>);
+export const IconSignOut = ({ size, ...p }: P) => (<svg {...base(size)} {...p}><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10" /></svg>);

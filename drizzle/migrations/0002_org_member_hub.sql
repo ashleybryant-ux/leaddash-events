@@ -1,0 +1,1 @@
+ALTER TABLE `organizations` ADD `member_hub` integer DEFAULT true NOT NULL;

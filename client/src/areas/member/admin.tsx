@@ -1249,7 +1249,7 @@ type Range = "12m" | "year" | "3y";
 const RANGE_LABEL: Record<Range, string> = { "12m": "Last 12 months", year: "This year", "3y": "Last 3 years" };
 
 export function AdminInsights() {
-  return <NeedsOrg title="Reports across programs">{(orgId) => <InsightsScreen orgId={orgId} />}</NeedsOrg>;
+  return <NeedsOrg title="Organization reports">{(orgId) => <InsightsScreen orgId={orgId} />}</NeedsOrg>;
 }
 
 function InsightsScreen({ orgId }: { orgId: number }) {
@@ -1265,7 +1265,7 @@ function InsightsScreen({ orgId }: { orgId: number }) {
   const engCols = "minmax(0, 1.4fr) 100px 100px 120px 120px";
   return (
     <AdminPage
-      title="Reports across programs"
+      title="Organization reports"
       sub="Membership, events, CE, and committees in one place"
       actions={
         <button className="btn btn-primary" onClick={() => setScheduling(true)}>
