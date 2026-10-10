@@ -10,6 +10,7 @@ import { SignIn } from "../../core/SignIn";
 import { eachDay, fmtDate, fmtDates, fmtDayDate, fmtRange, fmtTime } from "@shared/format";
 import { dateToZoned } from "@shared/time";
 import { Chip, HeaderStat, PoweredBy, Segmented, SpeakerSheet, TopBar, ceLabel } from "./shared";
+import { AttendeeSlides } from "./SessionSlides";
 
 /** /e/:slug: the branded welcome and sign-in. Signed-in people go straight to the agenda. */
 export function WelcomeScreen({ slug }: { slug: string }) {
@@ -404,6 +405,7 @@ export function SessionScreen({ sessionId }: { sessionId: number }) {
         ) : null}
       </div>
       {s.description ? <div style={{ fontSize: 14, lineHeight: 1.55, color: "var(--ink-2)", whiteSpace: "pre-wrap" }}>{s.description}</div> : null}
+      <AttendeeSlides slug={slug} sessionId={s.id} />
       {d.speakers.map((p) => (
         <div key={p.id} className="card row" style={{ padding: 12, gap: 12 }}>
           <Avatar url={p.headshotUrl} name={p.name} size={44} />

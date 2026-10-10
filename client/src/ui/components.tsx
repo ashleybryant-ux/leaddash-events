@@ -318,13 +318,45 @@ type RteCommand = { label: string; title: string; run: () => void; active?: () =
  * A small formatted-text editor: headings, bold, italic, underline, lists and
  * links. Produces HTML; the server keeps only those tags when it saves.
  */
-export function RichTextEditor({ value, onChange, label, minHeight = 220 }: { value: string; onChange: (html: string) => void; label: string; minHeight?: number }) {
+/** Lets a parent put text at the cursor (for example a field chip in an agreement). */
+export type RichTextApi = { insertHtml: (html: string) => void };
+
+export function RichTextEditor({ value, onChange, label, minHeight = 220, apiRef }: { value: string; onChange: (html: string) => void; label: string; minHeight?: number; apiRef?: { current: RichTextApi | null } }) {
   const box = useRef<HTMLDivElement>(null);
+  const caret = useRef<Range | null>(null);
   const [, refresh] = useState(0);
   // Fill the box once (and when the saved value changes from outside), never while typing.
   useEffect(() => {
     if (box.current && box.current.innerHTML !== value && document.activeElement !== box.current) box.current.innerHTML = value || "<p><br></p>";
   }, [value]);
+  // Remember where the cursor was, so inserting from outside the box goes there.
+  const keepCaret = () => {
+    const sel = document.getSelection();
+    if (sel && sel.rangeCount && box.current?.contains(sel.anchorNode)) caret.current = sel.getRangeAt(0).cloneRange();
+  };
+  if (apiRef) {
+    apiRef.current = {
+      insertHtml: (html: string) => {
+        const el = box.current;
+        if (!el) return;
+        el.focus();
+        const sel = document.getSelection();
+        if (sel) {
+          sel.removeAllRanges();
+          if (caret.current && el.contains(caret.current.startContainer)) sel.addRange(caret.current);
+          else {
+            const end = document.createRange();
+            end.selectNodeContents(el.lastElementChild ?? el);
+            end.collapse(false);
+            sel.addRange(end);
+          }
+        }
+        document.execCommand("insertHTML", false, html);
+        keepCaret();
+        onChange(el.innerHTML);
+      },
+    };
+  }
   const exec = (cmd: string, arg?: string) => {
     box.current?.focus();
     document.execCommand(cmd, false, arg);
@@ -377,8 +409,15 @@ export function RichTextEditor({ value, onChange, label, minHeight = 220 }: { va
           // A new line after a heading starts normal text, not another heading.
           if (e.key === "Enter" && !e.shiftKey && (block() === "h2" || block() === "h3")) setTimeout(() => exec("formatBlock", "<p>"), 0);
         }}
-        onKeyUp={() => refresh((n) => n + 1)}
-        onMouseUp={() => refresh((n) => n + 1)}
+        onKeyUp={() => {
+          keepCaret();
+          refresh((n) => n + 1);
+        }}
+        onMouseUp={() => {
+          keepCaret();
+          refresh((n) => n + 1);
+        }}
+        onBlur={keepCaret}
       />
     </div>
   );

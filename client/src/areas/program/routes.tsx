@@ -3,6 +3,7 @@ import type { AppRoute } from "../types";
 import { AgendaScreen, MyAgendaScreen, SessionScreen, SpeakersScreen, WelcomeScreen } from "./attendee";
 import { AlertsScreen, DiningScreen, HelpScreen, HostScreen, LostFoundScreen, MoreScreen, NearbyScreen } from "./info";
 import { AdminSessionEditScreen, AdminSessionsScreen, AdminSpeakerEditScreen, AdminSpeakersScreen } from "./adminProgram";
+import { SpeakerPageScreen } from "./speakerPage";
 import { AdminAnnounceScreen, AdminBrandingScreen, AdminDiningScreen, AdminHelpScreen, AdminHostScreen } from "./adminInfo";
 
 export const routes: AppRoute[] = [
@@ -19,6 +20,8 @@ export const routes: AppRoute[] = [
   { path: "/e/:slug/host", shell: "event", render: () => <HostScreen /> },
   { path: "/e/:slug/help", shell: "event", render: () => <HelpScreen /> },
   { path: "/e/:slug/lost-found", shell: "event", render: () => <LostFoundScreen /> },
+
+  { path: "/speak/:token", shell: "public", render: (p) => <SpeakerPageScreen token={p.token} /> },
 
   { path: "/admin/e/:eventId/sessions", shell: "admin", render: () => <AdminSessionsScreen /> },
   { path: "/admin/e/:eventId/sessions/:sessionId", shell: "admin", render: (p) => <AdminSessionEditScreen sessionId={Number(p.sessionId)} /> },

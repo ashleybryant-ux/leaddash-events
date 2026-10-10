@@ -7,6 +7,8 @@ import { AdminPage, useAdmin, useAdminEvent } from "../../shells/AdminShell";
 import { Avatar, EditSection, Empty, ErrorNote, Field, Kpi, PageLoading, Pill, QR, THead, UploadButton, confirmAction } from "../../ui/components";
 import { errorText, toast } from "../../ui/toast";
 import { fmtDate, fmtDates, fmtRange, fmtTime, fmtWhenTime } from "@shared/format";
+import { SessionSlides, SessionsTabs, SlidesActions, SlidesTab, inSessionsTab } from "./SessionSlides";
+import { AgreementPill, SendAgreementsButton, SpeakerAgreementSection, SpeakerTabs, WelcomePill, inSpeakerTab, useSpeakerAgreements } from "../agreements/SpeakerAgreementBits";
 
 /* ---------------- Shared bits ---------------- */
 
@@ -238,6 +240,7 @@ export function AdminSessionsScreen() {
   const utils = trpc.useUtils();
   const [open, setOpen] = useState<number | null>(null);
   const [adding, setAdding] = useState<SessionForm | null>(null);
+  const [tab, setTab] = useState("all");
   const canEdit = can("sessions", "edit");
 
   return (
@@ -246,7 +249,7 @@ export function AdminSessionsScreen() {
       sub={fmtDates(event.startDate, event.endDate)}
       actions={
         <>
-          {can("announcements", "edit") ? <Link href={`/admin/e/${event.id}/announcements`} className="btn">Send announcement</Link> : null}
+          {tab === "slides" ? <SlidesActions eventId={event.id} canEdit={canEdit} /> : can("announcements", "edit") ? <Link href={`/admin/e/${event.id}/announcements`} className="btn">Send announcement</Link> : null}
           {canEdit ? (
             <button className="btn btn-primary" onClick={() => setAdding(blankSession(event.startDate))}>
               Add session
@@ -295,13 +298,16 @@ export function AdminSessionsScreen() {
               </div>
             </div>
           ) : null}
-          {!q.data!.sessions.length ? (
+          <SessionsTabs eventId={event.id} startDate={event.startDate} endDate={event.endDate} total={q.data!.sessions.length} value={tab} onChange={setTab} />
+          {tab === "slides" ? (
+            <SlidesTab eventId={event.id} canEdit={canEdit} />
+          ) : !q.data!.sessions.length ? (
             <Empty>No sessions yet. Click Add session to build the agenda.</Empty>
           ) : (
             <div className="table">
               <div className="table-inner" style={{ minWidth: 900 }}>
                 <THead cols={COLS} labels={["When", "Session", "Room", "CE", "Scheduled", "Checked in", "Evaluations", ""]} />
-                {q.data!.sessions.map((s) => (
+                {q.data!.sessions.filter((s) => inSessionsTab(tab, s.date)).map((s) => (
                   <SessionListRow key={s.id} s={s} open={open === s.id} onToggle={() => setOpen(open === s.id ? null : s.id)} />
                 ))}
               </div>
@@ -408,6 +414,12 @@ function SessionPanel({ sessionId, inRow }: { sessionId: number; inRow?: boolean
       />
       <div className="divider" />
       <SessionSpeakers sessionId={s.id} speakers={d.speakers} all={d.allSpeakers} canEdit={canEdit} onSaved={refresh} />
+      {s.kind !== "break" && s.kind !== "meal" ? (
+        <>
+          <div className="divider" />
+          <SessionSlides eventId={event.id} sessionId={s.id} canEdit={canEdit} />
+        </>
+      ) : null}
       {inRow ? (
         <>
           <div className="row gap-10 wrap">
@@ -655,12 +667,6 @@ const speakerInput = ({ headshotUrl, sort, ...f }: SpeakerForm) => {
   return { ...f, sort: Math.max(0, Math.round(Number(sort)) || 0) };
 };
 
-const STATUS: Record<string, { label: string; tone: "green" | "orange" }> = {
-  complete: { label: "Complete", tone: "green" },
-  needs_headshot: { label: "Needs headshot", tone: "orange" },
-  needs_bio: { label: "Needs bio", tone: "orange" },
-};
-
 function SpeakerFields({ f, set }: { f: SpeakerForm; set: (f: SpeakerForm) => void }) {
   const event = useAdminEvent();
   const text = (k: "firstName" | "lastName" | "credentials" | "jobTitle" | "organization" | "city" | "website" | "email" | "bio" | "sort") => (e: { target: { value: string } }) => set({ ...f, [k]: e.target.value });
@@ -721,7 +727,7 @@ function SpeakerFields({ f, set }: { f: SpeakerForm; set: (f: SpeakerForm) => vo
   );
 }
 
-const SP_COLS = "minmax(0, 2.2fr) minmax(0, 1.6fr) 90px 150px 96px";
+const SP_COLS = "minmax(0, 1.6fr) minmax(0, 2fr) 170px 150px 96px";
 
 /** /admin/e/:eventId/speakers */
 export function AdminSpeakersScreen() {
@@ -733,15 +739,23 @@ export function AdminSpeakersScreen() {
   const create = trpc.program.speakers.create.useMutation();
   const [open, setOpen] = useState<number | null>(null);
   const [adding, setAdding] = useState<SpeakerForm | null>(null);
+  const agr = useSpeakerAgreements(event.id);
+  const slides = trpc.program.slides.overview.useQuery({ eventId: event.id });
+  const noSlides = new Set((slides.data?.rows ?? []).filter((r) => !r.files.length).map((r) => r.id));
+  const missingSlides = (s: { sessions: { id: number }[] }) => s.sessions.some((x) => noSlides.has(x.id));
+  const [spTab, setSpTab] = useState<string>("all");
   return (
     <AdminPage
       title={event.name}
       sub={fmtDates(event.startDate, event.endDate)}
       actions={
         canEdit ? (
-          <button className="btn btn-primary" onClick={() => setAdding(blankSpeaker)}>
-            Add speaker
-          </button>
+          <>
+            <SendAgreementsButton eventId={event.id} />
+            <button className="btn btn-primary" onClick={() => setAdding(blankSpeaker)}>
+              Add speaker
+            </button>
+          </>
         ) : undefined
       }
     >
@@ -780,12 +794,13 @@ export function AdminSpeakersScreen() {
       ) : !q.data!.length ? (
         <Empty>No speakers yet. Click Add speaker, or accept proposals to add their presenters.</Empty>
       ) : (
+        <div className="col" style={{ gap: 0 }}>
+        <SpeakerTabs value={spTab} onChange={setSpTab} ids={q.data!.map((s) => s.id)} rows={agr.byId} extra={[{ key: "slides", label: `Slides missing (${q.data!.filter(missingSlides).length})` }]} />
         <div className="table">
           <div className="table-inner">
-            <THead cols={SP_COLS} labels={["Speaker", "Title", "Sessions", "Profile", ""]} />
-            {q.data!.map((s) => {
+            <THead cols={SP_COLS} labels={["Speaker", "Session", "Agreement", "Welcome email", ""]} />
+            {q.data!.filter((s) => (spTab === "slides" ? missingSlides(s) : inSpeakerTab(spTab, agr.byId.get(s.id)))).map((s) => {
               const isOpen = open === s.id;
-              const st = STATUS[s.status];
               return (
                 <div key={s.id} className={isOpen ? "trow-open" : ""} style={{ borderBottom: "1px solid var(--line)" }}>
                   <div className="trow" style={{ gridTemplateColumns: SP_COLS, borderBottom: "none" }}>
@@ -794,22 +809,28 @@ export function AdminSpeakersScreen() {
                       <span className="strong clip">{s.fullName}</span>
                       {s.featured ? <Pill tone="solid">Featured</Pill> : null}
                     </div>
-                    <div className="clip">{s.jobTitle || <span className="muted">Not set</span>}</div>
-                    <div>{s.sessions.length}</div>
-                    <div><Pill tone={st.tone}>{st.label}</Pill></div>
+                    <div className="clip">{s.sessions[0]?.title || <span className="muted">No session</span>}</div>
+                    <div><AgreementPill row={agr.byId.get(s.id)} /></div>
+                    <div><WelcomePill row={agr.byId.get(s.id)} /></div>
                     <button type="button" className={`btn btn-sm btn-w${isOpen ? " btn-solid" : ""}`} onClick={() => setOpen(isOpen ? null : s.id)}>
                       {isOpen ? "Close" : "Details"}
                     </button>
                   </div>
                   {isOpen ? (
                     <div className="editor">
-                      <SpeakerPanel speakerId={s.id} inRow onDeleted={() => setOpen(null)} />
+                      <div className="sp-expand one">
+                        <SpeakerAgreementSection eventId={event.id} speakerId={s.id} email={s.email} />
+                        <section className="sp-sec" style={{ padding: "16px 18px" }}>
+                          <SpeakerPanel speakerId={s.id} inRow onDeleted={() => setOpen(null)} />
+                        </section>
+                      </div>
                     </div>
                   ) : null}
                 </div>
               );
             })}
           </div>
+        </div>
         </div>
       )}
     </AdminPage>

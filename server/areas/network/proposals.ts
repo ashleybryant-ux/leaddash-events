@@ -18,6 +18,7 @@ import { ENV } from "../../_core/env";
 import { randomToken } from "../../_core/crypto";
 import { fmtDate, fmtTime } from "@shared/format";
 import { activeRoles, hhmm, id, isoDate, slug } from "./common";
+import { sendSpeakerAgreement, templateFor } from "../agreements/sign";
 
 type Proposal = typeof schema.proposals.$inferSelect;
 type Assignment = typeof schema.reviewAssignments.$inferSelect;
@@ -253,7 +254,8 @@ const adminRouter = router({
       accepted: rows.filter((r) => r.status === "accepted").length,
       declined: rows.filter((r) => r.status === "declined").length,
     };
-    return { proposals, stats, rubric: s.rubric, eventDays: { start: event.startDate, end: event.endDate } };
+    const agreement = templateFor(event.id, "speaker");
+    return { proposals, stats, rubric: s.rubric, eventDays: { start: event.startDate, end: event.endDate }, speakerAgreement: agreement ? { name: agreement.name, sendOnAccept: agreement.sendOnAccept } : null };
   }),
 
   /** Sets who reviews a proposal. Reviews already submitted stay. */
@@ -288,6 +290,10 @@ const adminRouter = router({
         note: z.string().trim().max(2000).default(""),
         sendEmail: z.boolean().default(true),
         session: z.object({ date: isoDate, startTime: hhmm, endTime: hhmm, room: z.string().trim().max(120) }).nullable().default(null),
+        /** Accepting: email the speaker agreement to sign (when the event has one). */
+        sendAgreement: z.boolean().default(false),
+        /** Accepting: send the speaker welcome email once they sign. */
+        welcomeAfterSign: z.boolean().default(true),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -332,8 +338,21 @@ const adminRouter = router({
         await sendEmail(decisionEmail(event, updated, input.decision === "accepted" && session ? session : null));
         db.update(schema.proposals).set({ notifiedAt: new Date() }).where(eq(schema.proposals.id, p.id)).run();
       }
+      let agreementsSent = 0;
+      if (input.decision === "accepted" && input.sendAgreement && sessionId && templateFor(event.id, "speaker")) {
+        // Every presenter on the accepted session gets the speaker agreement to sign.
+        const people = db.select({ speakerId: schema.sessionSpeakers.speakerId }).from(schema.sessionSpeakers).where(eq(schema.sessionSpeakers.sessionId, sessionId)).all();
+        for (const { speakerId } of people) {
+          try {
+            const a = await sendSpeakerAgreement(speakerId, { welcomeAfterSign: input.welcomeAfterSign });
+            if (a && a.status !== "signed") agreementsSent++;
+          } catch (err) {
+            console.error("[proposals] agreement send failed:", err);
+          }
+        }
+      }
       audit(ctx.user, { eventId: event.id, action: `cfp.${input.decision}`, detail: p.title });
-      return { ok: true, sessionId };
+      return { ok: true, sessionId, agreementsSent };
     }),
 });
 

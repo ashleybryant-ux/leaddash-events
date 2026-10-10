@@ -1,0 +1,1 @@
+ALTER TABLE `agreements` ADD `welcome_after_sign` integer DEFAULT true NOT NULL;

@@ -13,6 +13,7 @@ import { fmtMoney, fmtWhen } from "@shared/format";
 import { toCents } from "./shared";
 import { downloadCsv } from "../ce/util";
 import { AgreementsTab } from "../agreements/AgreementsTab";
+import { VendorAgreementLine } from "../agreements/VendorAgreementBits";
 import { AddAttendeeSheet, type AddPreset } from "./AddAttendeeSheet";
 import { AddonsTab, PackagesTab, includesSentence } from "./admin-packages";
 import { PaymentsSection, type VendorRow } from "./vendor-payments";
@@ -118,16 +119,7 @@ function DetailsSection({ v, side, packages }: { v: VendorRow; side: Side; packa
         <span className="k">In the app</span>
         <span>{v.appSummary}</span>
       </div>
-      {v.agreement ? (
-        <div className="sp-li">
-          <span className="s2 grow">{v.agreement.templateName}</span>
-          <span className="r">
-            <a className="btn btn-sm btn-w" href={`/agreement/${encodeURIComponent(v.agreement.code)}`} target="_blank" rel="noopener noreferrer">
-              View PDF
-            </a>
-          </span>
-        </div>
-      ) : null}
+      <VendorAgreementLine v={v} />
     </>
   );
 
@@ -774,7 +766,7 @@ export function AdminVendorsScreen({ vendorId }: { vendorId?: number }) {
     downloadCsv({ filename: `${ev.slug}-packages.csv`, csv });
   };
 
-  const addLabel: Partial<Record<Tab, string>> = { sponsors: "Add sponsor", exhibitors: "Add exhibitor", packages: "Add package", addons: "Add add-on" };
+  const addLabel: Partial<Record<Tab, string>> = { sponsors: "Add sponsor", exhibitors: "Add exhibitor", packages: "Add package", addons: "Add add-on", agreements: "New agreement" };
   const actions = (
     <>
       {tab === "sponsors" || tab === "exhibitors" ? (
@@ -857,8 +849,8 @@ export function AdminVendorsScreen({ vendorId }: { vendorId?: number }) {
           <div className="col" style={{ gap: 0 }}>
             <FolderTabs tabs={tabs} value={tab} onChange={setTab} />
             {tab === "agreements" ? (
-              <div className="folder-body">
-                <AgreementsTab />
+              <div className="table">
+                <AgreementsTab adding={adding === "agreements"} onAdded={() => setAdding(null)} />
               </div>
             ) : tab === "map" ? (
               <div className="folder-body">

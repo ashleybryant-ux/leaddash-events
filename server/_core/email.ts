@@ -1,10 +1,48 @@
-import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
+import { SESClient, SendEmailCommand, SendRawEmailCommand } from "@aws-sdk/client-ses";
+import { randomBytes } from "node:crypto";
 import { ENV } from "./env";
 import { FONTS, SHAPE_RADIUS, buttonInk, lookOf, readableOn, type BrandLike } from "@shared/brand";
 
 let client: SESClient | null = null;
 
-export type SentEmail = { to: string; subject: string; text: string; html?: string; fromName?: string; replyTo?: string };
+export type EmailAttachment = { filename: string; contentType: string; content: Buffer };
+
+export type SentEmail = { to: string; subject: string; text: string; html?: string; fromName?: string; replyTo?: string; attachments?: EmailAttachment[] };
+
+/** RFC 2047 encoding for a header value that may hold non-ASCII text. */
+const encodeHeader = (v: string) => (/^[\x20-\x7E]*$/.test(v) ? v : `=?UTF-8?B?${Buffer.from(v, "utf8").toString("base64")}?=`);
+const base64Lines = (b: Buffer) => b.toString("base64").replace(/.{1,76}/g, "$&\r\n");
+
+/** A complete MIME message (multipart/mixed: text and HTML alternatives, then the attachments) for SES SendRawEmail. */
+export function buildRawEmail(msg: SentEmail, from: { name: string; address: string }) {
+  const mixed = `mixed_${randomBytes(12).toString("hex")}`;
+  const alt = `alt_${randomBytes(12).toString("hex")}`;
+  const lines = [
+    `From: "${encodeHeader(from.name)}" <${from.address}>`,
+    `To: ${msg.to}`,
+    ...(msg.replyTo ? [`Reply-To: ${msg.replyTo}`] : []),
+    `Subject: ${encodeHeader(msg.subject)}`,
+    "MIME-Version: 1.0",
+    `Content-Type: multipart/mixed; boundary="${mixed}"`,
+    "",
+    `--${mixed}`,
+    `Content-Type: multipart/alternative; boundary="${alt}"`,
+    "",
+    `--${alt}`,
+    "Content-Type: text/plain; charset=UTF-8",
+    "Content-Transfer-Encoding: base64",
+    "",
+    base64Lines(Buffer.from(msg.text, "utf8")),
+  ];
+  if (msg.html) lines.push(`--${alt}`, "Content-Type: text/html; charset=UTF-8", "Content-Transfer-Encoding: base64", "", base64Lines(Buffer.from(msg.html, "utf8")));
+  lines.push(`--${alt}--`, "");
+  for (const a of msg.attachments ?? []) {
+    const name = a.filename.replace(/["\\\r\n]/g, "");
+    lines.push(`--${mixed}`, `Content-Type: ${a.contentType}; name="${name}"`, `Content-Disposition: attachment; filename="${name}"`, "Content-Transfer-Encoding: base64", "", base64Lines(a.content));
+  }
+  lines.push(`--${mixed}--`, "");
+  return Buffer.from(lines.join("\r\n"), "utf8");
+}
 
 /** Emails sent during tests (and in development when SES is not reachable). */
 export const outbox: SentEmail[] = [];
@@ -22,6 +60,11 @@ export async function sendEmail(msg: SentEmail) {
   const name = (msg.fromName || ENV.emailFromName).replace(/["<>]/g, "");
   try {
     client ||= new SESClient({ region: ENV.sesRegion });
+    if (msg.attachments?.length) {
+      // Attachments need a raw MIME message.
+      await client.send(new SendRawEmailCommand({ Destinations: [msg.to], RawMessage: { Data: buildRawEmail(msg, { name, address: ENV.emailFromAddress }) } }));
+      return;
+    }
     await client.send(
       new SendEmailCommand({
         Source: `"${name}" <${ENV.emailFromAddress}>`,

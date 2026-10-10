@@ -36,6 +36,13 @@
       "when": 1791670746653,
       "tag": "0004_sponsors_agreements_slides",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1791672788502,
+      "tag": "0005_agreement_welcome_after_sign",
+      "breakpoints": true
     }
   ]
 }

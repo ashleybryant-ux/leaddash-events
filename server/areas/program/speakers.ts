@@ -7,6 +7,7 @@ import { audit, notFound, requireArea } from "../../_core/access";
 import { fileUrl } from "../../_core/files";
 import { emailLayout, escapeHtml, sendEmail } from "../../_core/email";
 import { bad, eventMailStyle, speakerAttendeeIds, speakerFullName, url, viewer } from "./util";
+import { refreshSpeakerAgreement, sendSpeakerAgreement, templateFor } from "../agreements/sign";
 
 const ROLES = ["presenter", "co-presenter", "moderator", "panelist"] as const;
 
@@ -107,7 +108,7 @@ export const speakersRouter = router({
     return { speaker: { ...s, fullName: speakerFullName(s), headshotUrl: fileUrl(s.headshotFileId), status: profileStatus(s) }, sessions: sessionsBySpeaker([s.id], false).get(s.id) ?? [], allSessions: all };
   }),
 
-  create: protectedProcedure.input(speakerInput.extend({ eventId: z.number() })).mutation(({ ctx, input }) => {
+  create: protectedProcedure.input(speakerInput.extend({ eventId: z.number() })).mutation(async ({ ctx, input }) => {
     const { event } = requireArea(ctx.user, input.eventId, "speakers", "edit");
     checkFile(event.orgId, input.headshotFileId);
     const row = getDb()
@@ -116,6 +117,14 @@ export const speakersRouter = router({
       .returning()
       .get();
     audit(ctx.user, { orgId: event.orgId, eventId: event.id, action: "speaker.create", detail: row.name });
+    // Speakers added by hand get the speaker agreement to sign when the template says so.
+    if (row.email && templateFor(event.id, "speaker")?.sendOnAdd) {
+      try {
+        await sendSpeakerAgreement(row.id);
+      } catch (err) {
+        console.error("[speakers] agreement send failed:", err);
+      }
+    }
     return row;
   }),
 
@@ -152,6 +161,7 @@ export const speakersRouter = router({
       const s = getDb().select().from(schema.sessions).where(eq(schema.sessions.id, input.sessionId)).get();
       if (!s || s.eventId !== input.eventId) throw notFound("That session");
       getDb().insert(schema.sessionSpeakers).values({ sessionId: input.sessionId, speakerId: input.speakerId, role: input.role }).onConflictDoNothing().run();
+      refreshSpeakerAgreement(input.speakerId);
       return { ok: true };
     }),
 
@@ -162,6 +172,7 @@ export const speakersRouter = router({
       .delete(schema.sessionSpeakers)
       .where(and(eq(schema.sessionSpeakers.speakerId, input.speakerId), eq(schema.sessionSpeakers.sessionId, input.sessionId)))
       .run();
+    refreshSpeakerAgreement(input.speakerId);
     return { ok: true };
   }),
 

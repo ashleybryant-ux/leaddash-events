@@ -225,6 +225,8 @@ export const agreements = sqliteTable(
     remindersSent: integer("reminders_sent").notNull().default(0),
     lastReminderAt: integer("last_reminder_at", { mode: "timestamp_ms" }),
     signedAt: integer("signed_at", { mode: "timestamp_ms" }),
+    /** Speaker agreements: send the speaker welcome email once this is signed. */
+    welcomeAfterSign: integer("welcome_after_sign", { mode: "boolean" }).notNull().default(true),
     createdAt: createdAt(),
   },
   (t) => [index("agreements_event").on(t.eventId), index("agreements_vendor").on(t.vendorId), index("agreements_speaker").on(t.speakerId)]

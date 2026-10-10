@@ -166,6 +166,8 @@ function ProposalDetail({ p, data, reviewers }: { p: Proposal; data: ListData; r
   const [note, setNote] = useState("");
   const [email, setEmail] = useState(true);
   const [addSession, setAddSession] = useState(!p.sessionId);
+  const [sendAgreement, setSendAgreement] = useState(data.speakerAgreement?.sendOnAccept ?? false);
+  const [welcomeAfterSign, setWelcomeAfterSign] = useState(true);
   const [session, setSession] = useState({ date: days[0] ?? "", startTime: "10:00", endTime: /workshop|90/i.test(p.format) ? "11:30" : "11:00", room: "" });
   const assignedChanged = chosen.slice().sort().join() !== p.reviews.map((r) => r.reviewerUserId).sort().join();
 
@@ -328,13 +330,28 @@ function ProposalDetail({ p, data, reviewers }: { p: Proposal; data: ListData; r
                 </>
               )
             ) : null}
+            <span className="label-caps">Emails</span>
+            <label className="check">
+              <input type="checkbox" checked={email} onChange={(e) => setEmail(e.target.checked)} />
+              {decision === "accepted" ? "Send the acceptance email" : `Email ${p.name} the decision`}
+            </label>
+            {decision === "accepted" && data.speakerAgreement && (p.sessionId || addSession) ? (
+              <>
+                <label className="check">
+                  <input type="checkbox" checked={sendAgreement} onChange={(e) => setSendAgreement(e.target.checked)} />
+                  Send the speaker agreement to sign
+                </label>
+                {sendAgreement ? (
+                  <label className="check">
+                    <input type="checkbox" checked={welcomeAfterSign} onChange={(e) => setWelcomeAfterSign(e.target.checked)} />
+                    Send the speaker welcome email after they sign
+                  </label>
+                ) : null}
+              </>
+            ) : null}
             <Field label="Note in the email (optional)">
               <textarea className="textarea" rows={3} maxLength={2000} value={note} onChange={(e) => setNote(e.target.value)} />
             </Field>
-            <label className="check">
-              <input type="checkbox" checked={email} onChange={(e) => setEmail(e.target.checked)} />
-              Email {p.name} the decision
-            </label>
             <div className="row gap-10">
               <button
                 className="btn btn-sm btn-solid btn-w-lg"
@@ -348,6 +365,8 @@ function ProposalDetail({ p, data, reviewers }: { p: Proposal; data: ListData; r
                       note: note.trim(),
                       sendEmail: email,
                       session: decision === "accepted" && addSession && !p.sessionId ? session : null,
+                      sendAgreement: decision === "accepted" && !!data.speakerAgreement && sendAgreement,
+                      welcomeAfterSign,
                     });
                     await utils.network.proposals.admin.list.invalidate();
                     setDecision(null);

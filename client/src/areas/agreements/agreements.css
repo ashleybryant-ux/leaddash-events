@@ -1,0 +1,97 @@
+/* Agreements: the admin tab, the signing step, the sign link page and the signed copy. Matches the approved boards. */
+
+/* Agreement text (admin preview, sign step, signed copy). */
+.agr-doc { font-size: 13.5px; line-height: 1.6; color: var(--ink); overflow-wrap: anywhere; }
+.agr-doc h2 { font-size: 17.5px; font-weight: 800; margin: 0 0 8px; line-height: 1.3; }
+.agr-doc h3 { font-size: 15px; font-weight: 800; margin: 10px 0 6px; }
+.agr-doc p { margin: 0 0 9px; }
+.agr-doc ul, .agr-doc ol { margin: 0 0 9px; padding-left: 22px; }
+.agr-doc > :last-child { margin-bottom: 0; }
+.agr-doc a { color: var(--brand); }
+.app .agr-doc { font-size: 13px; }
+.app .agr-doc h2 { font-size: 17px; }
+
+/* A field in the template: a green chip. */
+.agr-chip { display: inline; background: #E6F0EC; color: #1F5F4A; border-radius: 5px; padding: 1px 5px; font-weight: 700; font-size: 0.92em; white-space: nowrap; }
+.rte-box .agr-chip { cursor: default; user-select: all; }
+
+/* Admin: read view and editor. */
+.agr-exp { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+@media (max-width: 1100px) { .agr-exp { grid-template-columns: minmax(0, 1fr); } }
+.agr-read { padding: 14px 16px; max-height: 560px; overflow: auto; }
+.agr-edit { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); }
+@media (max-width: 1100px) { .agr-edit { grid-template-columns: minmax(0, 1fr); } }
+.agr-edit > div { padding: 14px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.agr-edit > div + div { border-left: 1px solid var(--line-2); }
+.agr-edit .rte-box { max-height: 470px; }
+.agr-save { display: flex; gap: 10px; padding: 12px 14px; border-top: 1px solid var(--line-2); align-items: center; }
+.agr-save .right { margin-left: auto; display: flex; gap: 10px; }
+.agr-fields { display: flex; flex-wrap: wrap; gap: 6px; }
+.agr-fields button { display: inline-flex; align-items: center; background: #E6F0EC; color: #1F5F4A; border: none; border-radius: 6px; padding: 4px 8px; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+.agr-fields button:hover { background: #D5E7DF; }
+
+/* Start from a template sheet. */
+.agr-starter { display: grid; grid-template-columns: 1.3fr 2fr 104px; gap: 12px; align-items: center; padding: 12px 18px; border-bottom: 1px solid var(--line); font-size: 14px; }
+.agr-starter b { font-weight: 800; }
+.agr-starter span { font-size: 13px; color: var(--muted); }
+
+/* Preview modal: the agreement on a page. */
+.agr-paper { background: #FFFFFF; border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+
+/* ---------- Signing (attendee-facing, follows the event branding) ---------- */
+.agr-sign { display: flex; flex-direction: column; gap: 12px; }
+.agr-sign h2.agr-h { margin: 4px 0 0; font-size: 15px; font-weight: 800; }
+.agr-box { position: relative; background: #FFFFFF; border: 1px solid var(--line); border-radius: 12px; padding: 14px; max-height: 430px; overflow: hidden; }
+.agr-box.short { max-height: 330px; }
+.agr-box.full { max-height: none; }
+.agr-box .agr-fade { position: absolute; left: 0; right: 0; bottom: 0; height: 60px; background: linear-gradient(rgba(255, 255, 255, 0), #FFFFFF); pointer-events: none; }
+.agr-two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.agr-two .btn { height: 38px; border-radius: 12px; border-width: 1px; border-color: var(--line); font-size: 13.5px; }
+.agr-sig { background: #FFFFFF; border: 1px solid var(--field); border-radius: 10px; padding: 10px 14px; }
+.agr-sig .lbl { font-size: 11.5px; font-weight: 700; color: var(--muted); }
+.agr-sig .name { font-family: "Dancing Script", cursive; font-weight: 400; font-size: 30px; color: #1A2B4C; line-height: 1.3; min-height: 39px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.agr-sig .when { font-size: 11.5px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 5px; }
+.agr-check { display: flex; gap: 10px; font-size: 13.5px; line-height: 1.5; align-items: flex-start; cursor: pointer; }
+.agr-check input { width: 18px; height: 18px; accent-color: var(--brand); margin: 1px 0 0; flex-shrink: 0; }
+.agr-opt { display: flex; align-items: flex-start; gap: 10px; background: #FFFFFF; border: 1px solid var(--line); border-radius: 12px; padding: 12px; font-size: 14px; font-weight: 700; cursor: pointer; }
+.agr-opt.on { border: 2px solid var(--brand); padding: 11px; }
+.agr-opt input { width: 20px; height: 20px; accent-color: var(--brand); margin: 0; flex-shrink: 0; }
+.agr-opt small { display: block; font-weight: 500; color: var(--muted); font-size: 12.5px; margin-top: 2px; line-height: 1.45; }
+.agr-sum { background: #FFFFFF; border: 1px solid var(--line); border-radius: 14px; }
+.agr-sum > div { display: flex; justify-content: space-between; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--line-2); font-size: 14px; }
+.agr-sum > div:last-child { border-bottom: none; }
+.agr-sum b { text-align: right; }
+.agr-total { display: flex; justify-content: space-between; font-weight: 800; font-size: 15px; }
+
+/* Public page frame: header band and the logo tile. */
+.agr-hero { height: 90px; background-color: var(--header-bg, var(--brand)); background-image: var(--header-image, none); background-size: cover; background-position: center; border-bottom: 3px solid var(--header-border, transparent); }
+.agr-hero.tall { height: 150px; }
+.agr-logo { width: 52px; height: 52px; border-radius: 12px; background: #FFFFFF; border: 1px solid var(--line); margin: -26px 0 0 18px; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 4px; position: relative; }
+.agr-logo img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.agr-logo i { width: 38px; height: 38px; border-radius: 50%; background: var(--brand); display: flex; align-items: center; justify-content: center; }
+.agr-logo i b { width: 13px; height: 13px; background: var(--accent); }
+.agr-pad { padding: 12px 18px 18px; display: flex; flex-direction: column; gap: 12px; flex: 1; zoom: var(--app-zoom, 1); }
+.agr-pad h1 { margin: 0; font-size: 21px; font-weight: 800; line-height: 1.2; }
+.agr-meta { font-size: 13.5px; color: var(--muted); font-weight: 600; line-height: 1.5; }
+
+/* ---------- Signed copy page (/agreement/:code) ---------- */
+.agr-copy-wrap { min-height: 100dvh; background: var(--app-bg, #F8FAFB); padding: 24px 16px 40px; font-family: var(--app-font, var(--font)); }
+.agr-copy-bar { max-width: 816px; margin: 0 auto 12px; display: flex; justify-content: flex-end; gap: 10px; }
+.agr-copy-bar .btn { border-radius: var(--btn-radius, 10px); }
+.agr-copy { max-width: 816px; margin: 0 auto; background: #FFFFFF; border: 1px solid var(--line); padding: 56px 64px; color: #111111; box-shadow: 0 2px 10px rgba(15, 42, 35, 0.06); }
+@media (max-width: 640px) { .agr-copy { padding: 28px 20px; } }
+.agr-copy-head { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; padding-bottom: 14px; border-bottom: 3px solid var(--brand); }
+.agr-copy-head .mark { width: 40px; height: 40px; border-radius: 50%; background: var(--brand); display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; }
+.agr-copy-head .mark b { width: 13px; height: 13px; background: var(--accent); display: block; }
+.agr-copy-head .mark.img { background: #FFFFFF; border-radius: 8px; }
+.agr-copy-head .mark img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.agr-copy-head .who { font-size: 13px; color: #444444; line-height: 1.4; }
+.agr-copy-head .who b { color: #111111; }
+.agr-copy .agr-doc { color: #111111; font-size: 13px; }
+.agr-sigs { display: flex; gap: 40px; margin-top: 26px; }
+@media (max-width: 640px) { .agr-sigs { flex-direction: column; gap: 22px; } }
+.agr-sigs > div { flex: 1; min-width: 0; }
+.agr-sigs .line { font-family: "Dancing Script", cursive; font-size: 30px; color: #1A2B4C; border-bottom: 1px solid #333333; padding-bottom: 2px; min-height: 44px; display: flex; align-items: flex-end; }
+.agr-sigs .line img { height: 40px; width: auto; max-width: 100%; }
+.agr-sigs .meta { font-size: 12px; margin-top: 6px; line-height: 1.5; }
+.agr-foot { margin-top: 26px; font-size: 10.5px; color: #666666; border-top: 1px solid #DDDDDD; padding-top: 8px; }

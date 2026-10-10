@@ -9,7 +9,7 @@ import { speakersRouter } from "./speakers";
 import { announcementsRouter, runScheduledAnnouncements, runSessionReminders } from "./announcements";
 import { alertsRouter, brandingRouter, diningRouter, hostRouter } from "./info";
 import { helpRouter, seedHelp } from "./help";
-import { slidesRouter } from "./slides";
+import { registerSlidesHttp, slidesRouter } from "./slides";
 
 export const programRouter = router({
   sessions: sessionsRouter,
@@ -26,6 +26,8 @@ export const programRouter = router({
 export const programArea: AreaModule<typeof programRouter> = {
   router: programRouter,
   seedEvent: (eventId) => seedHelp(eventId),
+  // Slide uploads stream the raw body, so they register before JSON parsing.
+  registerRawHttp: (app) => registerSlidesHttp(app),
   jobs: [
     { name: "scheduled announcements", run: () => runScheduledAnnouncements() },
     { name: "session reminders", run: () => runSessionReminders() },

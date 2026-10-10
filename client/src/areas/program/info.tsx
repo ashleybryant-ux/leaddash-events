@@ -141,6 +141,7 @@ function MoreRow({ href, icon, label, sub, right, last }: { href: string; icon: 
 export function MoreScreen() {
   const { slug, event, me, base } = useEventApp();
   const my = trpc.program.sessions.my.useQuery({ slug }, { enabled: !!me.attendee });
+  const speakerPage = trpc.program.slides.mySpeakerPage.useQuery({ slug });
   const f = event.features;
   const isBooth = me.staff.kinds.includes("booth") || me.staff.vendorIds.length > 0;
   const earned = my.data?.stats.ceEarned ?? 0;
@@ -149,6 +150,7 @@ export function MoreScreen() {
     { href: `${base}/transcript`, icon: <IconFolder size={20} />, label: "CE transcript", show: !!me.attendee },
     { href: `${base}/people`, icon: <IconPeople size={20} />, label: "People", show: f.networking },
     { href: `${base}/speakers`, icon: <IconUser size={20} />, label: "Speakers", show: true },
+    { href: speakerPage.data?.url ?? "/speak", icon: <IconUser size={20} />, label: "Your speaker page", sub: "Slides, bio and agreement", show: !!speakerPage.data?.url },
     { href: `${base}/exhibitors`, icon: <IconStore size={20} />, label: "Exhibitors and sponsors", show: f.exhibitors },
     { href: `${base}/map`, icon: <IconMap size={20} />, label: "Venue map", show: true },
     { href: `${base}/dining`, icon: <IconFood size={20} />, label: "Food and dining", show: f.dining },
