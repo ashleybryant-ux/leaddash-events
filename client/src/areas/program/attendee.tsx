@@ -201,7 +201,7 @@ export function AgendaScreen() {
               {s.speakerPhotos.length ? (
                 <Link href={`${base}/session/${s.id}`} className={`agenda-faces${s.speakerPhotos.length > 1 ? " two" : ""}`} aria-hidden="true" tabIndex={-1}>
                   {s.speakerPhotos.map((p) => (
-                    <Avatar key={p.name} url={p.headshotUrl} name={p.name} size={s.speakerPhotos.length > 1 ? 40 : 52} />
+                    <Avatar key={p.name} url={p.headshotUrl} name={p.name} size={s.speakerPhotos.length > 1 ? 52 : 72} />
                   ))}
                 </Link>
               ) : null}

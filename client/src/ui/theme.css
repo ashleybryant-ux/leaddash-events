@@ -331,10 +331,10 @@ h1, h2, h3 { margin: 0; }
 .rte-box { padding: 10px 12px; outline: none; max-height: 520px; overflow-y: auto; }
 
 /* ---------- Attendee app: agenda speaker faces ---------- */
-.agenda-faces { flex-shrink: 0; display: flex; width: 52px; }
-.agenda-faces .avatar { border: 2px solid #FFFFFF; box-sizing: content-box; }
-.agenda-faces.two { flex-direction: column; }
-.agenda-faces.two .avatar + .avatar { margin-top: -14px; margin-left: 12px; }
+.agenda-faces { flex-shrink: 0; display: flex; width: 72px; position: relative; }
+.agenda-faces .avatar { border-radius: 14px; border: 2px solid #FFFFFF; box-sizing: content-box; box-shadow: 0 1px 4px rgba(15, 42, 35, 0.12); }
+.agenda-faces.two { height: 82px; }
+.agenda-faces.two .avatar + .avatar { position: absolute; left: 20px; top: 26px; }
 
 /* ---------- Attendee app: Home tab ---------- */
 .home-hero { position: relative; min-height: 250px; background: var(--brand) center / cover no-repeat; color: #FFFFFF; display: flex; flex-direction: column; justify-content: flex-end; }
