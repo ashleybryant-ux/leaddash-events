@@ -11,6 +11,7 @@ import { IconCard } from "../../ui/icons";
 import { errorText, toast } from "../../ui/toast";
 import { fmtDate, fmtDates, fmtMoney, fmtTime, fmtWhen, slugify } from "@shared/format";
 import { centsToInput, parseMoney, StepNumber, useDebounced, type Question } from "./shared";
+import { PHASE_LABEL, addDays, priceView, type PriceSet } from "@shared/pricing";
 import { WelcomeTabBody, WelcomeTabsBar } from "./welcomeTabs";
 import { CheckoutForBody, CheckoutForTabs } from "./vendorCheckoutAdmin";
 
@@ -113,7 +114,7 @@ export function RegistrationScreen() {
 
 /* ---------- Tickets tab ---------- */
 
-const TICKET_COLS = "minmax(0, 1.6fr) 110px 110px 150px 96px";
+const TICKET_COLS = "minmax(0, 1.5fr) minmax(0, 1.2fr) 190px 110px 96px";
 const COUPON_COLS = "minmax(0, 1fr) 120px 110px 150px 96px";
 
 function eventDays(ev: AdminEvent) {
@@ -124,6 +125,10 @@ function TicketsTab({ event, canEdit }: { event: AdminEvent; canEdit: boolean })
   const summary = trpc.registration.summary.useQuery({ eventId: event.id });
   const tickets = trpc.registration.tickets.list.useQuery({ eventId: event.id });
   const coupons = trpc.registration.coupons.list.useQuery({ eventId: event.id });
+  const page = trpc.registration.checkout.get.useQuery({ eventId: event.id });
+  const buyerTypes = page.data?.buyerTypes ?? [];
+  const typeName = (id: string) => buyerTypes.find((b) => b.id === id)?.name ?? id;
+  const earlyEnds = (tickets.data ?? []).filter((t) => t.active && t.phase === "early" && t.earlyEndsOn).map((t) => t.earlyEndsOn!).sort()[0];
   const [openTicket, setOpenTicket] = useState<number | "new" | null>(null);
   const [openCoupon, setOpenCoupon] = useState<number | "new" | null>(null);
   const s = summary.data;
@@ -134,6 +139,7 @@ function TicketsTab({ event, canEdit }: { event: AdminEvent; canEdit: boolean })
           { label: "Registered", value: s ? s.registered : "" },
           { label: "Capacity", value: s ? (s.capacity ?? "No limit") : "" },
           { label: "Revenue", value: s ? fmtMoney(s.revenueCents, "$0.00") : "" },
+          ...(earlyEnds ? [{ label: "Early bird ends", value: fmtDate(earlyEnds), warn: true }] : []),
         ]}
       />
 
@@ -153,10 +159,10 @@ function TicketsTab({ event, canEdit }: { event: AdminEvent; canEdit: boolean })
         ) : (
           <div style={{ overflowX: "auto" }}>
             <div style={{ minWidth: 760 }}>
-              <THead cols={TICKET_COLS} labels={["Ticket", "Price", "Sold", "Sale ends", ""]} />
+              <THead cols={TICKET_COLS} labels={["Ticket", "Who can buy", "Price today", "Sold", ""]} />
               {openTicket === "new" ? (
                 <div className="editor" style={{ margin: "10px 0" }}>
-                  <TicketEditor event={event} tickets={tickets.data!} onDone={() => setOpenTicket(null)} />
+                  <TicketEditor event={event} buyerTypes={buyerTypes} onDone={() => setOpenTicket(null)} />
                 </div>
               ) : null}
               {!tickets.data!.length && openTicket !== "new" ? <Empty>No tickets yet. Click Add ticket.</Empty> : null}
@@ -171,14 +177,17 @@ function TicketsTab({ event, canEdit }: { event: AdminEvent; canEdit: boolean })
                     <span className="row gap-8 wrap">
                       <span className="strong">{t.name}</span>
                       {!t.active ? <Pill tone="gray">Off</Pill> : null}
-                      {t.audience === "members" ? <Pill>Members only</Pill> : null}
+                      {t.audience === "members" && !t.buyerTypes.length ? <Pill>Members only</Pill> : null}
                     </span>,
-                    fmtMoney(t.priceCents, "$0.00"),
+                    <span className="small">{t.buyerTypes.length ? t.buyerTypes.map(typeName).join(", ") : "Everyone"}</span>,
+                    <span className="row gap-6 wrap">
+                      {fmtMoney(t.todayCents, "$0.00")}
+                      {t.phase !== "regular" ? <Pill tone={t.phase === "early" ? "orange" : "gray"}>{PHASE_LABEL[t.phase]}</Pill> : null}
+                    </span>,
                     t.quantity ? `${t.sold} of ${t.quantity}` : String(t.sold),
-                    t.saleEndsOn ? fmtDate(t.saleEndsOn) : "Until the event",
                   ]}
                 >
-                  <TicketEditor event={event} ticket={t} tickets={tickets.data!} readOnly={!canEdit} onDone={() => setOpenTicket(null)} />
+                  <TicketEditor event={event} ticket={t} buyerTypes={buyerTypes} readOnly={!canEdit} onDone={() => setOpenTicket(null)} />
                 </ExpandRow>
               ))}
             </div>
@@ -186,6 +195,8 @@ function TicketsTab({ event, canEdit }: { event: AdminEvent; canEdit: boolean })
         )}
         {tickets.data?.some((t) => !t.active) ? <span className="small muted">Tickets marked Off do not show on the checkout page. Set a price and turn them on.</span> : null}
       </div>
+
+      <BuyerTypesCard eventId={event.id} types={buyerTypes} canEdit={canEdit} />
 
       <div className="card card-pad col gap-8">
         <div className="row-between">
@@ -237,45 +248,162 @@ function TicketsTab({ event, canEdit }: { event: AdminEvent; canEdit: boolean })
   );
 }
 
-function TicketEditor({ event, ticket, tickets, readOnly, onDone }: { event: AdminEvent; ticket?: Ticket; tickets: Ticket[]; readOnly?: boolean; onDone: () => void }) {
+type BuyerTypeRow = { id: string; name: string; memberId: boolean; school: boolean; code: string };
+type PriceInputs = { early: string; regular: string; late: string };
+
+/** "Who is registering?" choices on the checkout page: read view with Edit. */
+function BuyerTypesCard({ eventId, types, canEdit }: { eventId: number; types: BuyerTypeRow[]; canEdit: boolean }) {
+  const utils = trpc.useUtils();
+  const save = trpc.registration.buyerTypes.save.useMutation();
+  const [rows, setRows] = useState<BuyerTypeRow[] | null>(null);
+  const list = rows ?? types;
+  const setRow = (i: number, patch: Partial<BuyerTypeRow>) => setRows(list.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const asks = (b: BuyerTypeRow) => [b.memberId ? "Asks for a member ID" : "", b.school ? "Asks for school" : "", b.code ? "Needs a code from the event team" : ""].filter(Boolean).join(" · ");
+  const view = types.length ? (
+    <div className="col">
+      {types.map((b) => (
+        <div key={b.id} className="row gap-10" style={{ padding: "9px 0", borderBottom: "1px solid var(--line-2)" }}>
+          <span className="strong">{b.name}</span>
+          <span className="small muted grow">{asks(b)}</span>
+          {b.memberId ? <Pill>Asks ID</Pill> : null}
+          {b.code ? <Pill tone="orange">Code</Pill> : null}
+        </div>
+      ))}
+    </div>
+  ) : (
+    <span className="muted">The checkout page does not ask who is registering. Every ticket shows to everyone.</span>
+  );
+  if (!canEdit) {
+    return (
+      <div className="card card-pad col gap-8">
+        <span className="h3">Who is registering (buyer choices)</span>
+        {view}
+      </div>
+    );
+  }
+  return (
+    <div className="card card-pad">
+      <EditSection
+        title="Who is registering (buyer choices)"
+        saving={save.isPending}
+        onCancel={() => setRows(null)}
+        onSave={async () => {
+          await save.mutateAsync({ eventId, list: list.filter((r) => r.name.trim()) });
+          setRows(null);
+          await Promise.all([utils.registration.checkout.get.invalidate(), utils.registration.tickets.list.invalidate(), utils.registration.page.invalidate()]);
+          toast("Saved");
+        }}
+        view={view}
+        edit={
+          <div className="col gap-8">
+            {list.map((b, i) => (
+              <div key={i} className="row gap-10 wrap" style={{ alignItems: "flex-end" }}>
+                <Field label="Name">
+                  <input className="input" value={b.name} onChange={(e) => setRow(i, { name: e.target.value })} placeholder="Member" />
+                </Field>
+                <label className="check"><input type="checkbox" checked={b.memberId} onChange={(e) => setRow(i, { memberId: e.target.checked })} />Asks for a member ID</label>
+                <label className="check"><input type="checkbox" checked={b.school} onChange={(e) => setRow(i, { school: e.target.checked })} />Asks for school</label>
+                <Field label="Code (optional)">
+                  <input className="input" value={b.code} onChange={(e) => setRow(i, { code: e.target.value })} placeholder="SPEAKER27" />
+                </Field>
+                <button type="button" className="btn btn-sm btn-w" onClick={() => setRows(list.filter((_, j) => j !== i))}>Remove</button>
+              </div>
+            ))}
+            <div>
+              <button type="button" className="btn btn-sm btn-w" onClick={() => setRows([...list, { id: "", name: "", memberId: false, school: false, code: "" }])}>Add choice</button>
+            </div>
+            <span className="small muted">Buyers pick one of these first, then see only the tickets and prices for that choice. A code keeps a choice (like Speaker) to people the event team gives it to.</span>
+          </div>
+        }
+      />
+    </div>
+  );
+}
+
+const moneyIn = (c: number | null | undefined) => (c == null ? "" : centsToInput(c));
+
+function TicketEditor({ event, ticket, buyerTypes, readOnly, onDone }: { event: AdminEvent; ticket?: Ticket; buyerTypes: BuyerTypeRow[]; readOnly?: boolean; onDone: () => void }) {
   const utils = trpc.useUtils();
   const save = trpc.registration.tickets.save.useMutation();
   const remove = trpc.registration.tickets.remove.useMutation();
   const days = eventDays(event);
   const allDays = days > 1 ? `All ${days} days` : "All days";
+  const base: PriceInputs = { early: moneyIn(ticket?.earlyPriceCents), regular: moneyIn(ticket?.priceCents), late: moneyIn(ticket?.latePriceCents) };
   const [f, setF] = useState({
     name: ticket?.name ?? "",
     description: ticket?.description ?? "",
-    price: centsToInput(ticket?.priceCents),
     quantity: ticket?.quantity ? String(ticket.quantity) : "",
     saleEndsOn: ticket?.saleEndsOn ?? "",
-    after: ticket?.afterSale === "switch" && ticket.switchToTicketId ? `switch:${ticket.switchToTicketId}` : "close",
     includes: ticket?.includes ?? allDays,
     audience: ticket?.audience ?? "anyone",
     ribbon: ticket?.ribbon ?? "",
     active: ticket?.active ?? true,
+    early: !!ticket?.earlyEndsOn,
+    earlyEndsOn: ticket?.earlyEndsOn ?? "",
+    late: !!ticket?.lateStartsOn,
+    lateStartsOn: ticket?.lateStartsOn ?? "",
+    who: ticket?.buyerTypes ?? ([] as string[]),
   });
-  const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
-  const others = tickets.filter((t) => t.id !== ticket?.id);
+  const [prices, setPrices] = useState<Record<string, PriceInputs>>(() => {
+    const out: Record<string, PriceInputs> = { "": base };
+    for (const b of buyerTypes) {
+      const own = ticket?.buyerPrices?.[b.id];
+      out[b.id] = own ? { early: moneyIn(own.early), regular: moneyIn(own.regular), late: moneyIn(own.late) } : { ...base };
+    }
+    return out;
+  });
+  const set = (k: "name" | "description" | "quantity" | "saleEndsOn" | "includes" | "audience" | "ribbon" | "earlyEndsOn" | "lateStartsOn") => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
   const includeOptions = Array.from(new Set([allDays, "One day", "Workshop only", f.includes]));
+  const cols = f.who.length ? buyerTypes.filter((b) => f.who.includes(b.id)).map((b) => ({ key: b.id, label: b.name })) : [{ key: "", label: "Price" }];
+  const setPrice = (key: string, phase: keyof PriceInputs, v: string) => setPrices({ ...prices, [key]: { ...(prices[key] ?? base), [phase]: v } });
+  const today = ticket?.today ?? new Date().toISOString().slice(0, 10);
+
+  // What a buyer of each column sees today, worked out the same way the checkout page does.
+  const preview = cols.map((c) => {
+    const p = prices[c.key] ?? base;
+    const reg = parseMoney(p.regular);
+    if (reg === null || Number.isNaN(reg)) return null;
+    const e = f.early ? parseMoney(p.early) : null;
+    const l = f.late ? parseMoney(p.late) : null;
+    const v = priceView({ earlyEndsOn: f.early ? f.earlyEndsOn || null : null, lateStartsOn: f.late ? f.lateStartsOn || null : null }, { early: e != null && !Number.isNaN(e) ? e : null, regular: reg, late: l != null && !Number.isNaN(l) ? l : null }, today);
+    const label = f.who.length ? `${c.label}: ` : "";
+    return `${label}${fmtMoney(v.cents, "$0.00")}${v.saveCents > 0 ? `, crossed out ${fmtMoney(v.regularCents)}, "Early bird · save ${fmtMoney(v.saveCents)}"` : v.phase === "late" ? " (late price)" : ""}`;
+  });
 
   async function submit() {
-    const priceCents = parseMoney(f.price);
-    if (priceCents === null || Number.isNaN(priceCents)) return toast("Enter the price, like 249.00.", true);
     const quantity = f.quantity.trim() ? Number(f.quantity) : null;
     if (quantity !== null && (!Number.isInteger(quantity) || quantity < 1)) return toast("Quantity is a whole number, or leave it blank for no limit.", true);
-    const switchTo = f.after.startsWith("switch:") ? Number(f.after.slice(7)) : null;
+    if (f.early && !f.earlyEndsOn) return toast("Pick the date early bird ends.", true);
+    if (f.late && !f.lateStartsOn) return toast("Pick the date late pricing starts.", true);
+    const sets: Record<string, PriceSet> = {};
+    for (const c of cols) {
+      const p = prices[c.key] ?? base;
+      const reg = parseMoney(p.regular);
+      if (reg === null || Number.isNaN(reg)) return toast(`Enter the regular price${f.who.length ? ` for ${c.label}` : ""}, like 249.00.`, true);
+      const e = f.early ? parseMoney(p.early) : null;
+      const l = f.late ? parseMoney(p.late) : null;
+      if (f.early && (e === null || Number.isNaN(e))) return toast(`Enter the early bird price${f.who.length ? ` for ${c.label}` : ""}.`, true);
+      if (f.late && (l === null || Number.isNaN(l))) return toast(`Enter the late price${f.who.length ? ` for ${c.label}` : ""}.`, true);
+      sets[c.key] = { early: f.early ? e : null, regular: reg, late: f.late ? l : null };
+    }
+    const first = sets[cols[0].key];
     try {
       await save.mutateAsync({
         eventId: event.id,
         id: ticket?.id,
         name: f.name,
         description: f.description,
-        priceCents,
+        priceCents: first.regular,
+        earlyPriceCents: first.early,
+        latePriceCents: first.late,
+        earlyEndsOn: f.early ? f.earlyEndsOn : null,
+        lateStartsOn: f.late ? f.lateStartsOn : null,
+        buyerTypes: f.who,
+        buyerPrices: f.who.length ? sets : {},
         quantity,
         saleEndsOn: f.saleEndsOn || null,
-        afterSale: switchTo ? "switch" : "close",
-        switchToTicketId: switchTo,
+        afterSale: "close",
+        switchToTicketId: null,
         includes: f.includes,
         audience: f.audience as "anyone" | "members",
         ribbon: f.ribbon,
@@ -290,61 +418,110 @@ function TicketEditor({ event, ticket, tickets, readOnly, onDone }: { event: Adm
     }
   }
 
+  const phaseRow = (phase: keyof PriceInputs, label: string, on: boolean, toggle: ((v: boolean) => void) | null, date: ReactNode) => (
+    <div className="price-row" style={{ gridTemplateColumns: `150px repeat(${cols.length}, minmax(0, 1fr)) 210px`, opacity: on ? 1 : 0.6 }}>
+      <span className="row gap-8 strong">
+        {toggle ? <input type="checkbox" checked={on} aria-label={`Use ${label} pricing`} onChange={(e) => toggle(e.target.checked)} /> : null}
+        {label}
+      </span>
+      {cols.map((c) => (
+        <input key={c.key} className="input" inputMode="decimal" aria-label={`${label} price${f.who.length ? ` for ${c.label}` : ""}`} disabled={!on} value={(prices[c.key] ?? base)[phase]} onChange={(e) => setPrice(c.key, phase, e.target.value)} placeholder="0.00" />
+      ))}
+      <span>{date}</span>
+    </div>
+  );
+
   return (
     <>
       <div className="editor-title">{ticket ? (readOnly ? ticket.name : "Editing ticket") : "New ticket"}</div>
-      <fieldset disabled={readOnly} style={{ border: "none", margin: 0, padding: 0, display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: "10px 14px" }}>
-        <Field label="Ticket name" className="span-2">
-          <input className="input" value={f.name} onChange={set("name")} placeholder="Member, early bird" />
-        </Field>
-        <Field label="Price">
-          <input className="input" inputMode="decimal" value={f.price} onChange={set("price")} />
-        </Field>
-        <Field label="Quantity">
-          <input className="input" inputMode="numeric" value={f.quantity} onChange={set("quantity")} placeholder="No limit" />
-        </Field>
-        <Field label="Sale ends">
-          <input className="input" type="date" value={f.saleEndsOn} onChange={set("saleEndsOn")} />
-        </Field>
-        <Field label="After sale ends">
-          <select className="select" value={f.after} onChange={set("after")}>
-            <option value="close">Close the ticket</option>
-            {others.map((t) => (
-              <option key={t.id} value={`switch:${t.id}`}>
-                Switch to {t.name}
-              </option>
+      <fieldset disabled={readOnly} style={{ border: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: "10px 14px" }}>
+          <Field label="Ticket name" className="span-2">
+            <input className="input" value={f.name} onChange={set("name")} placeholder="Conference only" />
+          </Field>
+          <Field label="Includes">
+            <select className="select" value={f.includes} onChange={set("includes")}>
+              {includeOptions.map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="How many">
+            <input className="input" inputMode="numeric" value={f.quantity} onChange={set("quantity")} placeholder="No limit" />
+          </Field>
+          <Field label="On sale">
+            <select className="select" value={f.active ? "on" : "off"} onChange={(e) => setF({ ...f, active: e.target.value === "on" })}>
+              <option value="on">On</option>
+              <option value="off">Off</option>
+            </select>
+          </Field>
+          <Field label="Details (buyers tap Details)" className="span-all">
+            <textarea className="textarea" rows={2} value={f.description} onChange={set("description")} placeholder="What the ticket includes" />
+          </Field>
+          <Field label="Badge ribbon">
+            <input className="input" value={f.ribbon} onChange={set("ribbon")} placeholder="Student" />
+          </Field>
+          <Field label="Stop selling after">
+            <input className="input" type="date" value={f.saleEndsOn} onChange={set("saleEndsOn")} />
+          </Field>
+          {!buyerTypes.length ? (
+            <Field label="Who can buy it">
+              <select className="select" value={f.audience} onChange={set("audience")}>
+                <option value="anyone">Anyone</option>
+                <option value="members">Members only (asks for member ID)</option>
+              </select>
+            </Field>
+          ) : null}
+        </div>
+        {buyerTypes.length ? (
+          <div className="col gap-6">
+            <span className="label-caps">Who can buy it</span>
+            <div className="row gap-8 wrap">
+              {buyerTypes.map((b) => {
+                const on = f.who.includes(b.id);
+                return (
+                  <label key={b.id} className={`chip-check${on ? " on" : ""}`}>
+                    <input type="checkbox" checked={on} onChange={(e) => setF({ ...f, who: e.target.checked ? [...f.who, b.id] : f.who.filter((x) => x !== b.id) })} />
+                    {b.name}
+                  </label>
+                );
+              })}
+            </div>
+            {!f.who.length ? <span className="small muted">None picked: everyone can buy it at the same price.</span> : null}
+          </div>
+        ) : null}
+        <div className="col gap-6">
+          <span className="label-caps">Price by date</span>
+          <div className="price-row price-head" style={{ gridTemplateColumns: `150px repeat(${cols.length}, minmax(0, 1fr)) 210px` }}>
+            <span />
+            {cols.map((c) => (
+              <span key={c.key}>{c.label}</span>
             ))}
-          </select>
-        </Field>
-        <Field label="Includes">
-          <select className="select" value={f.includes} onChange={set("includes")}>
-            {includeOptions.map((o) => (
-              <option key={o} value={o}>
-                {o}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Who can buy it">
-          <select className="select" value={f.audience} onChange={set("audience")}>
-            <option value="anyone">Anyone</option>
-            <option value="members">Members only (asks for member ID)</option>
-          </select>
-        </Field>
-        <Field label="Badge ribbon">
-          <input className="input" value={f.ribbon} onChange={set("ribbon")} placeholder="Student" />
-        </Field>
-        <Field label="On sale">
-          <select className="select" value={f.active ? "on" : "off"} onChange={(e) => setF({ ...f, active: e.target.value === "on" })}>
-            <option value="on">On</option>
-            <option value="off">Off</option>
-          </select>
-        </Field>
-        <Field label="Note under the name" className="span-all">
-          <input className="input" value={f.description} onChange={set("description")} placeholder="Student ID at check-in" />
-        </Field>
+            <span>Dates</span>
+          </div>
+          {phaseRow("early", "Early bird", f.early, (v) => setF({ ...f, early: v }), f.early ? (
+            <label className="row gap-6 small">Ends <input className="input" type="date" value={f.earlyEndsOn} onChange={set("earlyEndsOn")} /></label>
+          ) : <span className="small muted">Off</span>)}
+          {phaseRow("regular", "Regular", true, null, (
+            <span className="small muted">
+              {f.early && f.earlyEndsOn ? `From ${fmtDate(addDays(f.earlyEndsOn, 1))}` : "From now"}
+              {f.late && f.lateStartsOn ? ` to ${fmtDate(addDays(f.lateStartsOn, -1))}` : ""}
+            </span>
+          ))}
+          {phaseRow("late", "Late", f.late, (v) => setF({ ...f, late: v }), f.late ? (
+            <label className="row gap-6 small">Starts <input className="input" type="date" value={f.lateStartsOn} onChange={set("lateStartsOn")} /></label>
+          ) : <span className="small muted">Off</span>)}
+        </div>
+        <div className="price-preview">
+          <b>What buyers see today ({fmtDate(today)})</b>
+          {preview.filter(Boolean).map((line, i) => (
+            <span key={i}>{line}</span>
+          ))}
+          {f.early && f.earlyEndsOn ? <span>On {fmtDate(addDays(f.earlyEndsOn, 1))} the price moves to Regular by itself. Nothing to switch by hand.</span> : null}
+        </div>
       </fieldset>
-      {f.after !== "close" && !f.saleEndsOn ? <span className="small" style={{ color: "var(--warn-ink)", fontWeight: 700 }}>Set the date the sale ends so buyers switch on time.</span> : null}
       {!readOnly ? (
         <div className="row gap-10">
           <button className="btn btn-sm btn-solid btn-w" disabled={save.isPending} onClick={submit}>

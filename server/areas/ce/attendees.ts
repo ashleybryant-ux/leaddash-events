@@ -14,7 +14,7 @@ import { emailButton, emailLayout, escapeHtml, sendEmail } from "../../_core/ema
 import { fmtDates, fmtMoney, fullName } from "@shared/format";
 import { badRequest, evaluationWindow, formForSession, getAttendee, parseCsv, toCsv } from "./shared";
 import { coverFor, sendWelcome } from "../registration/messages";
-import { newDoneToken } from "../registration/logic";
+import { eventToday, newDoneToken, ticketPrice } from "../registration/logic";
 import { accountRow } from "../registration/connect";
 import { stripeConfigured } from "../registration/stripe";
 import { vendorPassSummary } from "../network/vendors";
@@ -173,13 +173,16 @@ export const attendeesRouter = router({
   }),
 
   tickets: protectedProcedure.input(z.object({ eventId: z.number().int() })).query(({ ctx, input }) => {
-    requireArea(ctx.user, input.eventId, "attendees");
+    const { event } = requireArea(ctx.user, input.eventId, "attendees");
+    const today = eventToday(event);
+    // Today's price (early bird, regular or late), the base price for the ticket.
     return getDb()
-      .select({ id: schema.ticketTypes.id, name: schema.ticketTypes.name, priceCents: schema.ticketTypes.priceCents, active: schema.ticketTypes.active })
+      .select()
       .from(schema.ticketTypes)
       .where(eq(schema.ticketTypes.eventId, input.eventId))
       .orderBy(schema.ticketTypes.sort, schema.ticketTypes.id)
-      .all();
+      .all()
+      .map((t) => ({ id: t.id, name: t.name, priceCents: ticketPrice(t, null, today), active: t.active }));
   }),
 
   /** Sponsors and exhibitors with their passes, for the Add attendee sheet. */
@@ -243,8 +246,9 @@ export const attendeesRouter = router({
       if (pay.mode === "sponsor_pass" && !(withVendor && vendorId)) throw badRequest("Pick the sponsor or exhibitor whose pass this is.");
       const ticket = rest.ticketTypeId ? db.select().from(schema.ticketTypes).where(eq(schema.ticketTypes.id, rest.ticketTypeId)).get() : undefined;
       if ((pay.mode === "outside" || pay.mode === "link") && !ticket) throw badRequest("Pick a ticket.");
+      const ticketCents = ticket ? ticketPrice(ticket, null, eventToday(event)) : 0;
       if (pay.mode === "link") {
-        if (!ticket!.priceCents) throw badRequest("This ticket is free. Choose Complimentary instead.");
+        if (!ticketCents) throw badRequest("This ticket is free. Choose Complimentary instead.");
         const row = accountRow(event.orgId);
         if (!row?.chargesEnabled || !stripeConfigured()) throw badRequest("Connect Stripe before sending payment links.");
       }
@@ -259,7 +263,7 @@ export const attendeesRouter = router({
         const base = { eventId: event.id, attendeeId: row.id, email, ticketTypeId: ticket.id, buyer: { firstName: row.firstName, lastName: row.lastName, email, phone: row.phone, credentials: row.credentials, licenseNumber: row.licenseNumber, licenseState: row.licenseState, answers: row.answers, textConsent: row.textConsent } };
         const values =
           pay.mode === "outside" ? { ...base, subtotalCents: pay.amountCents, amountCents: pay.amountCents, status: "paid" as const, method: pay.method, reference: pay.reference, paidOn: pay.paidOn, recordedBy: ctx.user.id, paidAt: new Date() }
-          : pay.mode === "link" ? { ...base, subtotalCents: ticket.priceCents, amountCents: ticket.priceCents, status: "pending" as const, method: "link" as const, doneToken: newDoneToken(), recordedBy: ctx.user.id }
+          : pay.mode === "link" ? { ...base, subtotalCents: ticketCents, amountCents: ticketCents, status: "pending" as const, method: "link" as const, doneToken: newDoneToken(), recordedBy: ctx.user.id }
           : { ...base, subtotalCents: 0, amountCents: 0, status: "free" as const, method: pay.mode, recordedBy: ctx.user.id, paidAt: new Date() };
         order = db.insert(schema.orders).values(values).returning().get();
       }

@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import type { RouterOutputs } from "../../lib/trpc";
+import { priceView, setFor } from "@shared/pricing";
 
 export type PublicPage = RouterOutputs["registration"]["page"];
 export type Offer = PublicPage["tickets"][number];
@@ -22,7 +23,18 @@ export type Buyer = {
 export const emptyBuyer = (): Buyer => ({ firstName: "", lastName: "", email: "", phone: "", credentials: "", licenseNumber: "", licenseState: "", answers: {}, textConsent: false });
 
 /** What the buyer picked and typed, kept between the Register and Pay steps. */
-export type Draft = { ticketId: number; buyer: Buyer; coupon?: string };
+export type Draft = { ticketId: number; buyer: Buyer; coupon?: string; buyerType?: string };
+
+export type BuyerChoice = PublicPage["page"]["buyerTypes"][number];
+
+/** Tickets a buyer type can buy (all of them when no buyer type is picked or the page does not ask). */
+export const ticketsFor = (tickets: Offer[], buyerType: string | null | undefined) => (buyerType ? tickets.filter((t) => !t.buyerTypes.length || t.buyerTypes.includes(buyerType)) : tickets);
+
+/** Today's price, the crossed-out regular price and the price line for one ticket and buyer type. */
+export function offerView(t: Offer, buyerType: string | null | undefined, today: string) {
+  const set = setFor({ priceCents: t.regularCents, earlyPriceCents: t.earlyPriceCents, latePriceCents: t.latePriceCents, buyerPrices: t.buyerPrices }, buyerType);
+  return priceView({ earlyEndsOn: t.earlyEndsOn, lateStartsOn: t.lateStartsOn }, set, today);
+}
 
 const drafts = new Map<string, Draft>();
 const draftKey = (slug: string) => `ld-checkout:${slug}`;

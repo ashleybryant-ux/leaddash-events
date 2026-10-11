@@ -9,6 +9,7 @@ import { getDb, schema } from "../../_core/db";
 import { randomToken } from "../../_core/crypto";
 import { queueContact } from "../../_core/platform";
 import { dateToZoned } from "@shared/time";
+import { phaseOn, centsFor, setFor, type PriceSet } from "@shared/pricing";
 import type { CheckoutQuestion, TicketType } from "../../../drizzle/schema";
 import { sendWelcome } from "./messages";
 
@@ -47,13 +48,30 @@ export type TicketOffer = {
   id: number;
   name: string;
   description: string;
+  /** Today's price for a buyer with no buyer type (or the ticket's base prices). */
   priceCents: number;
+  /** The base regular price. */
+  regularCents: number;
+  earlyPriceCents: number | null;
+  latePriceCents: number | null;
+  earlyEndsOn: string | null;
+  lateStartsOn: string | null;
+  buyerTypes: string[];
+  buyerPrices: Record<string, PriceSet>;
   includes: string;
   saleEndsOn: string | null;
   membersOnly: boolean;
   left: number | null;
   soldOut: boolean;
 };
+
+type PricedTicket = Pick<TicketType, "priceCents" | "earlyPriceCents" | "latePriceCents" | "earlyEndsOn" | "lateStartsOn" | "buyerPrices">;
+
+/** What a ticket costs today for a buyer type (early bird, regular or late by the date). */
+export function ticketPrice(t: PricedTicket, buyerTypeId: string | null | undefined, today: string) {
+  const set = setFor({ ...t, buyerPrices: t.buyerPrices ?? {} }, buyerTypeId);
+  return centsFor(set, phaseOn(t, set, today));
+}
 
 /**
  * Tickets a buyer can see right now. A ticket whose sale ended is hidden. If
@@ -87,7 +105,14 @@ export function ticketsOnSale(ev: Event, opts: { onlyIds?: number[]; now?: Date 
         id: t.id,
         name: t.name,
         description: t.description,
-        priceCents: t.priceCents,
+        priceCents: ticketPrice(t, null, today),
+        regularCents: t.priceCents,
+        earlyPriceCents: t.earlyPriceCents,
+        latePriceCents: t.latePriceCents,
+        earlyEndsOn: t.earlyEndsOn,
+        lateStartsOn: t.lateStartsOn,
+        buyerTypes: t.buyerTypes ?? [],
+        buyerPrices: t.buyerPrices ?? {},
         includes: t.includes,
         saleEndsOn: t.saleEndsOn,
         membersOnly: t.audience === "members",

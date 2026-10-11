@@ -1,6 +1,9 @@
 import { sqliteTable, integer, text, index, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
 import { createdAt, events, organizations, users } from "./core";
+import type { BuyerType, PriceSet } from "../../shared/pricing";
+
+export type { BuyerType, PriceSet };
 
 /** A ticket someone can buy. Prices are in cents. */
 export const ticketTypes = sqliteTable(
@@ -17,6 +20,16 @@ export const ticketTypes = sqliteTable(
     /** What happens after the sale ends: close it, or point buyers to another ticket. */
     afterSale: text("after_sale", { enum: ["close", "switch"] }).notNull().default("close"),
     switchToTicketId: integer("switch_to_ticket_id"),
+    /** Early bird: this price through this date (event time zone). */
+    earlyEndsOn: text("early_ends_on"),
+    earlyPriceCents: integer("early_price_cents"),
+    /** Late: this price from this date. */
+    lateStartsOn: text("late_starts_on"),
+    latePriceCents: integer("late_price_cents"),
+    /** Buyer types (checkout page) who can buy it. Empty means everyone. */
+    buyerTypes: text("buyer_types", { mode: "json" }).$type<string[]>().notNull().default(sql`'[]'`),
+    /** Each buyer type's own early, regular and late prices. A buyer type left out pays the prices above. */
+    buyerPrices: text("buyer_prices", { mode: "json" }).$type<Record<string, PriceSet>>().notNull().default(sql`'{}'`),
     includes: text("includes").notNull().default("All days"),
     audience: text("audience", { enum: ["anyone", "members"] }).notNull().default("anyone"),
     /** Badge ribbon text (Speaker, Student...). */
@@ -72,6 +85,8 @@ export const checkoutPages = sqliteTable("checkout_pages", {
   embedStyle: text("embed_style", { enum: ["inline", "popup"] }).notNull().default("inline"),
   /** Offer Klarna and Afterpay at checkout when the association's Stripe account has them on. */
   payOverTime: integer("pay_over_time", { mode: "boolean" }).notNull().default(true),
+  /** "Who is registering?" choices. Empty means the page does not ask. */
+  buyerTypes: text("buyer_types", { mode: "json" }).$type<BuyerType[]>().notNull().default(sql`'[]'`),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
 });
 

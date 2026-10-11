@@ -4,6 +4,7 @@
  * the welcome email with its follow-ups.
  */
 import { lookOf } from "@shared/brand";
+import { buyerTypeId, phaseOn, type BuyerType, type PriceSet } from "@shared/pricing";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { and, desc, eq, inArray } from "drizzle-orm";
@@ -31,8 +32,7 @@ import {
   registeredCount,
   soldByTicket,
   ticketsOnSale,
-  type Buyer,
-} from "./logic";
+  type Buyer, ticketPrice } from "./logic";
 import { KIND_LABELS, coverFor, describeRule, isAttendeeKind, renderEmail, renderText, runFollowUps, sampleCtx, seedTemplates, templateFor } from "./messages";
 import { runRecipientFollowUps } from "./recipientMessages";
 import { welcomeRouter } from "./welcomeRouter";
@@ -131,15 +131,25 @@ function paymentsFor(orgId: number) {
 }
 
 /** Everything a buyer must pass before an order is created. */
-function validatePurchase(slug: string, ticketId: number, buyer: Buyer | null, couponCode?: string | null) {
+function validatePurchase(slug: string, ticketId: number, buyer: Buyer | null, couponCode?: string | null, buyerTypeIn?: string | null) {
   const ev = getEventBySlug(slug);
   if (ev.status === "ended") throw bad("Registration for this event is closed.");
   const page = checkoutPageFor(ev.id);
   const ticket = ticketsOnSale(ev, { onlyIds: page.ticketIds }).find((t) => t.id === ticketId);
   if (!ticket) throw bad("That ticket is not on sale. Pick another ticket.");
   if (ticket.soldOut) throw bad("That ticket is sold out.");
+  // "Who is registering?": the buyer type must be one the page offers and one this ticket is for.
+  const types = page.buyerTypes ?? [];
+  const buyerType = types.length ? types.find((t) => t.id === buyerTypeIn) ?? null : null;
+  if ((buyerTypeIn && !buyerType) || (ticket.buyerTypes.length && !buyerType)) throw bad("Pick who is registering.");
+  if (buyerType && ticket.buyerTypes.length && !ticket.buyerTypes.includes(buyerType.id)) throw bad(`That ticket is not for ${buyerType.name}. Pick another ticket.`);
   const coupon = findCoupon(ev, couponCode);
-  const price = priceWith(ticket.priceCents, coupon);
+  const price = priceWith(ticketPrice({ priceCents: ticket.regularCents, earlyPriceCents: ticket.earlyPriceCents, latePriceCents: ticket.latePriceCents, earlyEndsOn: ticket.earlyEndsOn, lateStartsOn: ticket.lateStartsOn, buyerPrices: ticket.buyerPrices }, buyerType?.id, eventToday(ev)), coupon);
+  if (buyer && buyerType) {
+    if (buyerType.memberId && !buyer.answers.member_id?.trim()) throw bad("Enter your member ID.");
+    if (buyerType.school && !buyer.answers.school?.trim()) throw bad("Enter your school.");
+    if (buyerType.code && buyer.answers.buyer_code?.trim().toLowerCase() !== buyerType.code.trim().toLowerCase()) throw bad(`Enter the ${buyerType.name.toLowerCase()} code from the event team.`);
+  }
   if (buyer) {
     const email = buyer.email.trim().toLowerCase();
     checkAnswers(cleanQuestions(page.questions), buyer);
@@ -152,7 +162,13 @@ function validatePurchase(slug: string, ticketId: number, buyer: Buyer | null, c
       .get();
     if (existing?.status === "registered") throw bad(`${email} is already registered. Check that inbox for the welcome email.`);
   }
-  return { ev, page, ticket, coupon, price };
+  return { ev, page, ticket, coupon, price, buyerType };
+}
+
+/** What the buyer typed, with the buyer type's name kept with the answers (the code itself is not stored). */
+function buyerRecord(buyer: Buyer, email: string, buyerType: BuyerType | null) {
+  const { buyer_code: _code, ...answers } = buyer.answers;
+  return { ...buyer, email, answers: buyerType ? { ...answers, buyer_type: buyerType.name } : answers };
 }
 
 /**
@@ -196,17 +212,56 @@ async function checkoutSession(ev: typeof schema.events.$inferSelect, order: typ
   return session.client_secret;
 }
 
+const money = z.number().int().min(0).max(10_000_000);
+const priceSetIn = z.object({ early: money.nullable(), regular: money, late: money.nullable() });
+
+type TicketPriceInput = { priceCents: number; earlyEndsOn: string | null; earlyPriceCents: number | null; lateStartsOn: string | null; latePriceCents: number | null; buyerTypes: string[]; buyerPrices: Record<string, PriceSet> };
+
+/**
+ * Keeps a ticket's prices consistent: only buyer types the page offers, a
+ * price for each phase that has a date, early bird before late, and the base
+ * prices following the first buyer type (what lists and staff screens show).
+ */
+function cleanTicketPrices(t: TicketPriceInput, offered: BuyerType[]) {
+  const ids = offered.map((b) => b.id);
+  t.buyerTypes = Array.from(new Set(t.buyerTypes.filter((b) => ids.includes(b))));
+  const prices: Record<string, PriceSet> = {};
+  for (const b of t.buyerTypes) if (t.buyerPrices[b]) prices[b] = t.buyerPrices[b];
+  t.buyerPrices = prices;
+  const first = t.buyerTypes.find((b) => prices[b]);
+  if (first) {
+    t.priceCents = prices[first].regular;
+    t.earlyPriceCents = prices[first].early;
+    t.latePriceCents = prices[first].late;
+  }
+  const sets = [{ early: t.earlyPriceCents, regular: t.priceCents, late: t.latePriceCents }, ...Object.values(prices)];
+  if (!t.earlyEndsOn) {
+    t.earlyPriceCents = null;
+    for (const p of Object.values(prices)) p.early = null;
+  } else if (sets.some((p) => p.early == null)) throw bad("Enter the early bird price for each buyer, or turn early bird off.");
+  if (!t.lateStartsOn) {
+    t.latePriceCents = null;
+    for (const p of Object.values(prices)) p.late = null;
+  } else if (sets.some((p) => p.late == null)) throw bad("Enter the late price for each buyer, or turn late pricing off.");
+  if (t.earlyEndsOn && t.lateStartsOn && t.earlyEndsOn >= t.lateStartsOn) throw bad("Early bird has to end before late pricing starts.");
+}
+
 const ticketRouter = router({
   list: protectedProcedure.input(eventIn).query(({ ctx, input }) => {
-    requireArea(ctx.user, input.eventId, "registration", "view");
+    const { event } = requireArea(ctx.user, input.eventId, "registration", "view");
     const sold = soldByTicket(input.eventId);
+    const today = eventToday(event);
+    // Today's base price and which price period it is in (early bird, regular, late).
     return getDb()
       .select()
       .from(schema.ticketTypes)
       .where(eq(schema.ticketTypes.eventId, input.eventId))
       .orderBy(schema.ticketTypes.sort, schema.ticketTypes.id)
       .all()
-      .map((t) => ({ ...t, sold: sold.get(t.id) ?? 0 }));
+      .map((t) => {
+        const set = { early: t.earlyPriceCents, regular: t.priceCents, late: t.latePriceCents };
+        return { ...t, sold: sold.get(t.id) ?? 0, todayCents: ticketPrice(t, null, today), phase: phaseOn(t, set, today), today };
+      });
   }),
 
   save: protectedProcedure
@@ -220,6 +275,12 @@ const ticketRouter = router({
         saleEndsOn: date.nullable(),
         afterSale: z.enum(["close", "switch"]),
         switchToTicketId: z.number().int().positive().nullable(),
+        earlyEndsOn: date.nullable().default(null),
+        earlyPriceCents: money.nullable().default(null),
+        lateStartsOn: date.nullable().default(null),
+        latePriceCents: money.nullable().default(null),
+        buyerTypes: z.array(z.string().max(40)).max(20).default([]),
+        buyerPrices: z.record(z.string().max(40), priceSetIn).default({}),
         includes: z.string().trim().max(80).default("All days"),
         audience: z.enum(["anyone", "members"]),
         ribbon: z.string().trim().max(40).default(""),
@@ -231,6 +292,7 @@ const ticketRouter = router({
       const { event } = requireArea(ctx.user, input.eventId, "registration", "edit");
       const db = getDb();
       const { id, eventId, ...rest } = input;
+      cleanTicketPrices(rest, checkoutPageFor(eventId).buyerTypes ?? []);
       if (rest.afterSale === "switch") {
         if (!rest.saleEndsOn) throw bad("Set the date the sale ends before choosing a ticket to switch to.");
         const target = rest.switchToTicketId ? db.select().from(schema.ticketTypes).where(eq(schema.ticketTypes.id, rest.switchToTicketId)).get() : undefined;
@@ -356,6 +418,36 @@ const checkoutRouter = router({
       audit(ctx.user, { orgId: event.orgId, eventId, action: "checkout.update" });
       return { ok: true };
     }),
+});
+
+const buyerTypeIn = z.object({ id: z.string().max(40).default(""), name: z.string().trim().min(1).max(40), memberId: z.boolean(), school: z.boolean(), code: z.string().trim().max(40) });
+
+/** "Who is registering?" choices on the checkout page. */
+const buyerTypeRouter = router({
+  save: protectedProcedure.input(eventIn.extend({ list: z.array(buyerTypeIn).max(12) })).mutation(({ ctx, input }) => {
+    const { event } = requireArea(ctx.user, input.eventId, "registration", "edit");
+    const db = getDb();
+    const seen = new Set<string>();
+    const list: BuyerType[] = input.list.map((b) => {
+      let id = b.id || buyerTypeId(b.name);
+      while (seen.has(id)) id = `${id}-2`;
+      seen.add(id);
+      return { id, name: b.name, memberId: b.memberId, school: b.school, code: b.code };
+    });
+    checkoutPageFor(event.id);
+    db.update(schema.checkoutPages).set({ buyerTypes: list, updatedAt: new Date() }).where(eq(schema.checkoutPages.eventId, event.id)).run();
+    // Tickets drop buyer types that no longer exist.
+    const ids = list.map((b) => b.id);
+    for (const t of db.select().from(schema.ticketTypes).where(eq(schema.ticketTypes.eventId, event.id)).all()) {
+      const keep = (t.buyerTypes ?? []).filter((b) => ids.includes(b));
+      if (keep.length !== (t.buyerTypes ?? []).length) {
+        const prices = Object.fromEntries(Object.entries(t.buyerPrices ?? {}).filter(([k]) => keep.includes(k)));
+        db.update(schema.ticketTypes).set({ buyerTypes: keep, buyerPrices: prices }).where(eq(schema.ticketTypes.id, t.id)).run();
+      }
+    }
+    audit(ctx.user, { orgId: event.orgId, eventId: event.id, action: "checkout.buyer_types" });
+    return list;
+  }),
 });
 
 const templateRouter = router({
@@ -542,6 +634,7 @@ export const registrationRouter = router({
   tickets: ticketRouter,
   coupons: couponRouter,
   checkout: checkoutRouter,
+  buyerTypes: buyerTypeRouter,
   templates: templateRouter,
   welcomes: welcomeRouter,
   stripe: stripeRouter,
@@ -575,7 +668,9 @@ export const registrationRouter = router({
         showConfirmation: page.showConfirmation,
         embedStyle: page.embedStyle,
         payOverTime: page.payOverTime,
+        buyerTypes: (page.buyerTypes ?? []).map((b) => ({ id: b.id, name: b.name, memberId: b.memberId, school: b.school, needsCode: !!b.code })),
       },
+      today: eventToday(ev),
       tickets,
       payments: paymentsFor(ev.orgId),
       closed: ev.status === "ended",
@@ -584,15 +679,15 @@ export const registrationRouter = router({
 
   /** Price with a coupon applied. */
   quote: publicProcedure
-    .input(slugIn.extend({ ticketId: z.number().int().positive(), coupon: z.string().max(40).optional() }))
+    .input(slugIn.extend({ ticketId: z.number().int().positive(), coupon: z.string().max(40).optional(), buyerType: z.string().max(40).optional() }))
     .query(({ input }) => {
-      const { price, coupon, ticket } = validatePurchase(input.slug, input.ticketId, null, input.coupon);
+      const { price, coupon, ticket } = validatePurchase(input.slug, input.ticketId, null, input.coupon, input.buyerType);
       return { ...price, couponCode: coupon?.code ?? null, ticketName: ticket.name };
     }),
 
   /** Checks the details on the Register step (membership, required questions, already registered). */
-  check: publicProcedure.input(slugIn.extend({ ticketId: z.number().int().positive(), buyer: buyerIn })).mutation(({ input }) => {
-    const { price, ticket } = validatePurchase(input.slug, input.ticketId, input.buyer);
+  check: publicProcedure.input(slugIn.extend({ ticketId: z.number().int().positive(), buyer: buyerIn, buyerType: z.string().max(40).optional() })).mutation(({ input }) => {
+    const { price, ticket } = validatePurchase(input.slug, input.ticketId, input.buyer, null, input.buyerType);
     return { ...price, ticketName: ticket.name };
   }),
 
@@ -601,9 +696,9 @@ export const registrationRouter = router({
    * embedded Stripe Checkout Session on the organization's own account.
    */
   start: publicProcedure
-    .input(slugIn.extend({ ticketId: z.number().int().positive(), buyer: buyerIn, coupon: z.string().max(40).optional(), embed: z.boolean().default(false) }))
+    .input(slugIn.extend({ ticketId: z.number().int().positive(), buyer: buyerIn, coupon: z.string().max(40).optional(), buyerType: z.string().max(40).optional(), embed: z.boolean().default(false) }))
     .mutation(async ({ input }) => {
-      const { ev, ticket, coupon, price } = validatePurchase(input.slug, input.ticketId, input.buyer, input.coupon);
+      const { ev, ticket, coupon, price, buyerType } = validatePurchase(input.slug, input.ticketId, input.buyer, input.coupon, input.buyerType);
       const db = getDb();
       const email = input.buyer.email.trim().toLowerCase();
       const doneToken = newDoneToken();
@@ -621,7 +716,7 @@ export const registrationRouter = router({
           feeCents: fee,
           status: "pending",
           stripeAccountId: price.amountCents > 0 ? pay.accountId : null,
-          buyer: { ...input.buyer, email },
+          buyer: buyerRecord(input.buyer, email, buyerType),
           doneToken,
         })
         .returning()
@@ -716,7 +811,18 @@ export const registrationArea: AreaModule<typeof registrationRouter> = {
     const db = getDb();
     seedTemplates(eventId);
     if (!db.select().from(schema.checkoutPages).where(eq(schema.checkoutPages.eventId, eventId)).get()) {
-      db.insert(schema.checkoutPages).values({ eventId, questions: DEFAULT_QUESTIONS, buttonLabel: "Register" }).run();
+      db.insert(schema.checkoutPages)
+        .values({
+          eventId,
+          questions: DEFAULT_QUESTIONS,
+          buttonLabel: "Register",
+          buyerTypes: [
+            { id: "member", name: "Member", memberId: true, school: false, code: "" },
+            { id: "non-member", name: "Non-member", memberId: false, school: false, code: "" },
+            { id: "student", name: "Student", memberId: false, school: true, code: "" },
+          ],
+        })
+        .run();
     }
     const ev = db.select().from(schema.events).where(eq(schema.events.id, eventId)).get()!;
     const days = Math.round((Date.parse(`${ev.endDate}T12:00:00Z`) - Date.parse(`${ev.startDate}T12:00:00Z`)) / 86400_000) + 1;

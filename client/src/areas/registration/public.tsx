@@ -10,12 +10,13 @@ import { EmbeddedCheckout, EmbeddedCheckoutProvider } from "@stripe/react-stripe
 import { trpc } from "../../lib/trpc";
 import { brandStyle } from "../../shells/AttendeeShell";
 import { ErrorNote, PageLoading, QR, Spinner } from "../../ui/components";
-import { IconCheck, IconLock } from "../../ui/icons";
+import { IconAward, IconCalendar, IconCheck, IconLock, IconPin } from "../../ui/icons";
 import { PoweredByLogo } from "../../ui/Logo";
 import { errorText, toast } from "../../ui/toast";
 import { isIOS, isStandalone } from "../../lib/push";
 import { fmtDate, fmtDates, fmtMoney } from "@shared/format";
-import { IconShare, StepNumber, clearDraft, emptyBuyer, loadDraft, saveDraft, stripeFor, useEmbedHeight, type Buyer, type Draft, type Offer, type PublicPage, type Question } from "./shared";
+import { IconShare, StepNumber, clearDraft, emptyBuyer, loadDraft, offerView, saveDraft, stripeFor, ticketsFor, useEmbedHeight, type Buyer, type BuyerChoice, type Draft, type Offer, type PublicPage, type Question } from "./shared";
+import { PHASE_LABEL, daysBetween, type PriceStep } from "@shared/pricing";
 
 /* ---------- Frame ---------- */
 
@@ -52,93 +53,260 @@ function Steps({ on }: { on: number }) {
   );
 }
 
-const ticketNote = (t: Offer) => (t.soldOut ? "Sold out" : t.saleEndsOn ? `Ends ${fmtDate(t.saleEndsOn)}` : t.description || t.includes);
+/* ---------- Ticket cards with price by date ---------- */
+
+/** "Who is registering?": one choice per buyer type the event set up. */
+function WhoChips({ types, value, onChange }: { types: BuyerChoice[]; value: string | null; onChange: (id: string) => void }) {
+  return (
+    <div className="ck-who" role="radiogroup" aria-label="Who is registering?">
+      {types.map((t) => (
+        <button key={t.id} type="button" role="radio" aria-checked={value === t.id} className={value === t.id ? "on" : ""} onClick={() => onChange(t.id)}>
+          {t.name}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** One banner for the soonest early bird deadline among the tickets shown. */
+function EarlyBirdBanner({ tickets, buyerType, today }: { tickets: Offer[]; buyerType: string | null; today: string }) {
+  const ends = tickets
+    .map((t) => (offerView(t, buyerType, today).phase === "early" ? t.earlyEndsOn : null))
+    .filter((d): d is string => !!d)
+    .sort()[0];
+  if (!ends) return null;
+  const left = daysBetween(today, ends) + 1;
+  return (
+    <div className="ck-eb">
+      <IconAward size={18} />
+      <span>
+        <b>Early bird pricing ends {fmtDate(ends)}.</b> {left === 1 ? "Last day to save." : `${left} days left to save.`}
+      </span>
+    </div>
+  );
+}
+
+const stepWhen = (st: PriceStep) => (st.phase === "early" ? `until ${fmtDate(st.until!)}` : st.phase === "late" ? `from ${fmtDate(st.from!)}` : st.from ? fmtDate(st.from) : st.until ? `until ${fmtDate(st.until)}` : "");
+
+function TicketCard({ t, buyerType, today, selected, onSelect }: { t: Offer; buyerType: string | null; today: string; selected: boolean; onSelect: () => void }) {
+  const [open, setOpen] = useState(false);
+  const v = offerView(t, buyerType, today);
+  const showLine = v.steps.length > 1;
+  return (
+    <div className={`ck-tk${selected ? " on" : ""}${t.soldOut ? " off" : ""}`}>
+      <button type="button" className="ck-tk-main" role="radio" aria-checked={selected} disabled={t.soldOut} onClick={onSelect}>
+        <span className="ck-tk-n">
+          <b>{t.name}</b>
+          {t.includes ? <small>{t.includes}</small> : null}
+        </span>
+        <span className="ck-tk-pr">
+          <b>{t.soldOut ? "Sold out" : fmtMoney(v.cents)}</b>
+          {v.saveCents > 0 && !t.soldOut ? <s>{fmtMoney(v.regularCents)}</s> : null}
+        </span>
+      </button>
+      {v.saveCents > 0 && !t.soldOut ? <span className="ck-pill">Early bird · save {fmtMoney(v.saveCents).replace(/\.00$/, "")}</span> : null}
+      {showLine ? (
+        <div className="ck-line" style={{ gridTemplateColumns: `repeat(${v.steps.length}, minmax(0, 1fr))` }}>
+          {v.steps.map((st) => (
+            <div key={st.phase} className={st.now ? "now" : ""}>
+              <b>{fmtMoney(st.cents)}</b>
+              {PHASE_LABEL[st.phase]}
+              <br />
+              {stepWhen(st)}
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {open && t.description ? <div className="ck-more">{t.description}</div> : null}
+      <div className="ck-tk-foot">
+        {t.description ? (
+          <button type="button" className="ck-link" aria-expanded={open} onClick={() => setOpen(!open)}>
+            {open ? "Hide details" : "Details"}
+          </button>
+        ) : null}
+        {t.left !== null && t.left > 0 && t.left <= 50 ? <span className="ck-left">{t.left} left</span> : null}
+        <button type="button" className={`ck-pick${selected ? " on" : ""}`} disabled={t.soldOut} onClick={onSelect}>
+          {selected ? (
+            <>
+              <IconCheck size={16} />
+              Selected
+            </>
+          ) : (
+            "Select"
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 /* ---------- /r/:slug ---------- */
 
 export function EventLandingScreen({ slug }: { slug: string }) {
   const q = usePage(slug);
+  const utils = trpc.useUtils();
   const [, navigate] = useLocation();
+  const saved = loadDraft(slug);
+  const [buyerType, setBuyerType] = useState<string | null>(saved?.buyerType ?? null);
+  const [ticketId, setTicketId] = useState<number | null>(saved?.ticketId ?? null);
+  const [codeOpen, setCodeOpen] = useState(!!saved?.coupon);
+  const [codeInput, setCodeInput] = useState(saved?.coupon ?? "");
+  const [coupon, setCoupon] = useState(saved?.coupon ?? "");
+  const [codeError, setCodeError] = useState("");
+  const d = q.data;
+  const types = d?.page.buyerTypes ?? [];
+  const who = types.length ? buyerType : null;
+  const shown = d ? ticketsFor(d.tickets, who) : [];
+  const chosen = shown.find((t) => t.id === ticketId && !t.soldOut);
+  const quote = trpc.registration.quote.useQuery({ slug, ticketId: chosen?.id ?? 0, coupon: coupon || undefined, buyerType: who ?? undefined }, { enabled: !!chosen && !!coupon, retry: false });
   if (q.isLoading) return <PageLoading />;
   if (q.error) return <div className="app"><ErrorNote error={q.error} /></div>;
-  const d = q.data!;
-  const ev = d.event;
-  const where = [ev.venueName, ev.city].filter(Boolean).join(", ");
-  const open = !d.closed && d.tickets.some((t) => !t.soldOut);
+  const data = d!;
+  const ev = data.event;
+  const place = [ev.venueName, [ev.city, ev.state].filter(Boolean).join(", ")].filter(Boolean).join(" · ");
+  const view = chosen ? offerView(chosen, who, data.today) : null;
+  const discount = coupon && quote.data ? quote.data.discountCents : 0;
+  const total = view ? Math.max(0, view.cents - discount) : 0;
+  const saved$ = (view?.saveCents ?? 0) + discount;
+  const needWho = types.length > 0 && !who;
+  const cover = data.page.coverUrl ? { backgroundImage: `url("${data.page.coverUrl.replace(/"/g, "%22")}")` } : undefined;
+
+  async function applyCode() {
+    const code = codeInput.trim();
+    setCodeError("");
+    if (!code) return setCoupon("");
+    if (!chosen) return setCodeError("Pick a ticket first.");
+    try {
+      await utils.registration.quote.fetch({ slug, ticketId: chosen.id, coupon: code, buyerType: who ?? undefined });
+      setCoupon(code);
+    } catch (err) {
+      setCodeError(errorText(err));
+    }
+  }
+  function next() {
+    if (!chosen) return;
+    saveDraft(slug, { ticketId: chosen.id, buyer: saved?.buyer ?? emptyBuyer(), coupon: coupon || undefined, buyerType: who ?? undefined });
+    navigate(`/r/${slug}/register`);
+  }
+
   return (
-    <PublicFrame data={d}>
-      <div role="img" aria-label="Cover image" className="cover" style={{ flexShrink: 0, ...(d.page.coverUrl ? { backgroundImage: `url(${d.page.coverUrl})` } : {}) }}>
-        {ev.logoUrl ? (
-          <div style={{ position: "absolute", left: 16, bottom: -22, width: 52, height: 52, borderRadius: 12, background: "#FFFFFF", border: "1px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", padding: 4 }}>
-            <img src={ev.logoUrl} alt={`${ev.orgName} logo`} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+    <div className="ck" style={brandStyle(ev.branding)}>
+      <TitleOf title={ev.shortName} />
+      <aside className="ck-side" style={cover}>
+        <div className="ck-side-in">
+          <div className="ck-logo">{ev.logoUrl ? <img src={ev.logoUrl} alt={`${ev.orgName} logo`} /> : <span>{ev.shortName.slice(0, 2).toUpperCase()}</span>}</div>
+          <div className="col" style={{ gap: 6, minWidth: 0 }}>
+            <h1>{data.page.headline}</h1>
+            <div className="ck-meta">
+              <span><IconCalendar size={16} />{fmtDates(ev.startDate, ev.endDate)}</span>
+              {place ? <span><IconPin size={16} />{place}</span> : null}
+            </div>
+            {data.page.description ? <p className="ck-desc">{data.page.description}</p> : null}
           </div>
-        ) : null}
-      </div>
-      <main className="app-body" style={{ paddingTop: 32, gap: 10 }}>
-        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, lineHeight: 1.2 }}>{d.page.headline}</h1>
-        <div className="muted" style={{ fontSize: 13, fontWeight: 600 }}>
-          {fmtDates(ev.startDate, ev.endDate)}
-          {where ? ` · ${where}` : ""}
         </div>
-        {d.page.description ? <div style={{ fontSize: 14, lineHeight: 1.55, color: "var(--ink-2)", whiteSpace: "pre-line" }}>{d.page.description}</div> : null}
-        <div className="section-title" style={{ paddingTop: 6 }}>Tickets</div>
-        {d.page.payOverTime && (d.payments.klarna || d.payments.afterpay) && !d.closed && d.tickets.some((t) => t.priceCents >= 100) ? (
-          <div className="small muted">Pay in full, or over time with {[d.payments.klarna ? "Klarna" : "", d.payments.afterpay ? "Afterpay" : ""].filter(Boolean).join(" or ")}.</div>
-        ) : null}
-        {d.closed ? (
+      </aside>
+      <main className="ck-main">
+        {data.closed ? (
           <div className="banner banner-warn">Registration is closed.</div>
-        ) : !d.tickets.length ? (
+        ) : !data.tickets.length ? (
           <div className="banner banner-warn">Tickets are not on sale yet.</div>
         ) : (
-          <div className="col gap-8">
-            {d.tickets.map((t) => (
-              <div key={t.id} className="option" style={{ cursor: "default", justifyContent: "space-between", opacity: t.soldOut ? 0.6 : 1 }}>
-                <span className="col" style={{ gap: 2 }}>
-                  <span style={{ fontSize: 14, fontWeight: 800 }}>{t.name}</span>
-                  {t.saleEndsOn || t.soldOut || t.membersOnly ? (
-                    <span className="small strong" style={{ color: t.soldOut ? "var(--bad-ink)" : "var(--warn-ink)" }}>
-                      {[t.membersOnly ? "Members only" : "", t.soldOut ? "Sold out" : t.saleEndsOn ? `Ends ${fmtDate(t.saleEndsOn)}` : ""].filter(Boolean).join(" · ")}
-                    </span>
-                  ) : null}
-                </span>
-                <span style={{ fontSize: 14, fontWeight: 800 }}>{fmtMoney(t.priceCents)}</span>
-              </div>
-            ))}
-          </div>
+          <>
+            {types.length ? (
+              <>
+                <h2>Who is registering?</h2>
+                <WhoChips types={types} value={who} onChange={(id) => { setBuyerType(id); setCoupon(""); }} />
+              </>
+            ) : (
+              <h2>Pick your ticket</h2>
+            )}
+            {needWho ? (
+              <div className="ck-hint">Pick one to see your tickets and prices.</div>
+            ) : (
+              <>
+                <EarlyBirdBanner tickets={shown} buyerType={who} today={data.today} />
+                {data.page.payOverTime && (data.payments.klarna || data.payments.afterpay) && shown.some((t) => t.priceCents >= 100) ? (
+                  <div className="small muted">Pay in full, or over time with {[data.payments.klarna ? "Klarna" : "", data.payments.afterpay ? "Afterpay" : ""].filter(Boolean).join(" or ")}.</div>
+                ) : null}
+                <div className="col" role="radiogroup" aria-label="Tickets" style={{ gap: 12 }}>
+                  {shown.map((t) => (
+                    <TicketCard key={t.id} t={t} buyerType={who} today={data.today} selected={chosen?.id === t.id} onSelect={() => setTicketId(t.id)} />
+                  ))}
+                  {!shown.length ? <div className="ck-hint">No tickets for this choice right now.</div> : null}
+                </div>
+                {coupon && quote.data ? (
+                  <div className="ck-code ok">
+                    <span>{quote.data.couponCode} applied · {fmtMoney(quote.data.discountCents)} off</span>
+                    <button type="button" className="ck-link" onClick={() => { setCoupon(""); setCodeInput(""); }}>Remove</button>
+                  </div>
+                ) : codeOpen ? (
+                  <div className="ck-code open">
+                    <div className="row gap-8" style={{ width: "100%" }}>
+                      <input className="input" aria-label="Discount code" placeholder="Discount code" value={codeInput} onChange={(e) => setCodeInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && applyCode()} />
+                      <button type="button" className="btn btn-sm btn-w" onClick={applyCode}>Apply</button>
+                    </div>
+                    {codeError ? <div className="err" style={{ width: "100%" }}>{codeError}</div> : null}
+                  </div>
+                ) : (
+                  <button type="button" className="ck-code" onClick={() => setCodeOpen(true)}>
+                    <span>Have a discount code?</span>
+                    <span aria-hidden="true">+</span>
+                  </button>
+                )}
+                <div className="small muted" style={{ textAlign: "center" }}>Fees and your total show before you pay.</div>
+              </>
+            )}
+          </>
         )}
+        {!data.closed && data.tickets.length ? (
+          <div className="ck-bar">
+            <div className="grow">
+              <small>{chosen ? `1 ticket${saved$ > 0 ? ` · saved ${fmtMoney(saved$)}` : ""}` : "No ticket yet"}</small>
+              <b>{fmtMoney(total, "$0.00")}</b>
+            </div>
+            <button type="button" className="btn btn-primary btn-lg" disabled={!chosen} onClick={next}>
+              {data.page.buttonLabel === "Register" ? "Continue" : data.page.buttonLabel}
+            </button>
+          </div>
+        ) : null}
+        <PoweredByLogo />
       </main>
-      {open ? (
-        <div className="app-footer">
-          <button className="btn btn-primary btn-lg btn-block" onClick={() => navigate(`/r/${slug}/register`)}>
-            {d.page.buttonLabel}
-          </button>
-        </div>
-      ) : null}
-    </PublicFrame>
+    </div>
   );
+}
+
+function TitleOf({ title }: { title: string }) {
+  useTitle(title);
+  return null;
 }
 
 /* ---------- Ticket and details (Register step and the embed) ---------- */
 
-function TicketChoice({ tickets, value, onChange }: { tickets: Offer[]; value: number | null; onChange: (id: number) => void }) {
+function TicketChoice({ tickets, value, onChange, buyerType, today }: { tickets: Offer[]; value: number | null; onChange: (id: number) => void; buyerType: string | null; today: string }) {
   return (
     <fieldset style={{ margin: 0, padding: 0, border: "none", display: "flex", flexDirection: "column", gap: 8 }}>
       <legend style={{ padding: "0 0 8px", fontSize: 14, fontWeight: 800 }}>Your ticket</legend>
-      {tickets.map((t) => (
-        <label key={t.id} className={`option${value === t.id ? " selected" : ""}`} style={t.soldOut ? { opacity: 0.6, cursor: "default" } : undefined}>
-          <input type="radio" name="ticket" checked={value === t.id} disabled={t.soldOut} onChange={() => onChange(t.id)} />
-          <span className="grow col" style={{ gap: 2 }}>
-            <span style={{ fontSize: 14, fontWeight: 800 }}>{t.name}</span>
-            <span className="small muted">{[t.membersOnly ? "Members only" : "", ticketNote(t)].filter(Boolean).join(" · ")}</span>
-          </span>
-          <span style={{ fontSize: 14, fontWeight: 800 }}>{fmtMoney(t.priceCents)}</span>
-        </label>
-      ))}
+      {tickets.map((t) => {
+        const v = offerView(t, buyerType, today);
+        return (
+          <label key={t.id} className={`option${value === t.id ? " selected" : ""}`} style={t.soldOut ? { opacity: 0.6, cursor: "default" } : undefined}>
+            <input type="radio" name="ticket" checked={value === t.id} disabled={t.soldOut} onChange={() => onChange(t.id)} />
+            <span className="grow col" style={{ gap: 2 }}>
+              <span style={{ fontSize: 14, fontWeight: 800 }}>{t.name}</span>
+              <span className="small muted">{t.soldOut ? "Sold out" : v.saveCents > 0 ? `Early bird until ${fmtDate(t.earlyEndsOn!)}` : t.includes}</span>
+            </span>
+            <span className="col" style={{ alignItems: "flex-end", gap: 0 }}>
+              <span style={{ fontSize: 14, fontWeight: 800 }}>{fmtMoney(v.cents)}</span>
+              {v.saveCents > 0 ? <s className="small muted">{fmtMoney(v.regularCents)}</s> : null}
+            </span>
+          </label>
+        );
+      })}
     </fieldset>
   );
 }
 
-function DetailsFields({ questions, buyer, set, memberTicket = false }: { questions: Question[]; buyer: Buyer; set: (b: Buyer) => void; memberTicket?: boolean }) {
+function DetailsFields({ questions, buyer, set, memberTicket = false, kind = null }: { questions: Question[]; buyer: Buyer; set: (b: Buyer) => void; memberTicket?: boolean; kind?: BuyerChoice | null }) {
   const field = (k: keyof Buyer) => (e: { target: { value: string } }) => set({ ...buyer, [k]: e.target.value });
   const answer = (key: string) => (e: { target: { value: string } }) => set({ ...buyer, answers: { ...buyer.answers, [key]: e.target.value } });
   const req = (q: Question) => (q.required ? "" : " (optional)");
@@ -158,10 +326,22 @@ function DetailsFields({ questions, buyer, set, memberTicket = false }: { questi
           Email
           <input className="input" type="email" autoComplete="email" inputMode="email" value={buyer.email} onChange={field("email")} />
         </label>
-        {memberTicket ? (
+        {memberTicket || kind?.memberId ? (
           <label className="field span-2">
             Member ID
             <input className="input" value={buyer.answers.member_id ?? ""} onChange={answer("member_id")} />
+          </label>
+        ) : null}
+        {kind?.school ? (
+          <label className="field span-2">
+            School
+            <input className="input" value={buyer.answers.school ?? ""} onChange={answer("school")} />
+          </label>
+        ) : null}
+        {kind?.needsCode ? (
+          <label className="field span-2">
+            {kind.name} code from the event team
+            <input className="input" autoCapitalize="characters" value={buyer.answers.buyer_code ?? ""} onChange={answer("buyer_code")} />
           </label>
         ) : null}
         {questions.map((q) => {
@@ -242,35 +422,42 @@ function useRegisterForm(slug: string, data: PublicPage | undefined, embed: bool
   const saved = loadDraft(slug);
   const wanted = Number(new URLSearchParams(search).get("ticket")) || null;
   const [ticketId, setTicketId] = useState<number | null>(saved?.ticketId ?? wanted);
+  const [buyerType, setBuyerType] = useState<string | null>(saved?.buyerType ?? null);
   const [buyer, setBuyer] = useState<Buyer>(saved?.buyer ?? emptyBuyer());
   const [error, setError] = useState("");
   const check = trpc.registration.check.useMutation();
   const start = trpc.registration.start.useMutation();
-  const available = (data?.tickets ?? []).filter((t) => !t.soldOut);
-  const chosen = data?.tickets.find((t) => t.id === ticketId && !t.soldOut) ?? (available.length === 1 ? available[0] : undefined);
-  const free = chosen ? chosen.priceCents === 0 : false;
+  const types = data?.page.buyerTypes ?? [];
+  const kind = types.find((t) => t.id === buyerType) ?? null;
+  const who = kind?.id ?? null;
+  const shown = ticketsFor(data?.tickets ?? [], who);
+  const available = shown.filter((t) => !t.soldOut);
+  const chosen = shown.find((t) => t.id === ticketId && !t.soldOut) ?? (available.length === 1 && (!types.length || who) ? available[0] : undefined);
+  const view = chosen && data ? offerView(chosen, who, data.today) : null;
+  const free = view ? view.cents === 0 : false;
 
   async function submit(onPaid: (d: Draft) => void) {
     setError("");
+    if (types.length && !who) return setError("Pick who is registering.");
     if (!chosen) return setError("Pick a ticket.");
-    const draft: Draft = { ticketId: chosen.id, buyer: { ...buyer, email: buyer.email.trim() }, coupon: saved?.coupon };
+    const draft: Draft = { ticketId: chosen.id, buyer: { ...buyer, email: buyer.email.trim() }, coupon: saved?.coupon, buyerType: who ?? undefined };
     try {
       if (free) {
-        const res = await start.mutateAsync({ slug, ticketId: chosen.id, buyer: draft.buyer, embed });
+        const res = await start.mutateAsync({ slug, ticketId: chosen.id, buyer: draft.buyer, coupon: draft.coupon, buyerType: draft.buyerType, embed });
         if (res.kind === "free") {
           clearDraft(slug);
           navigate(res.doneUrl);
         }
         return;
       }
-      await check.mutateAsync({ slug, ticketId: chosen.id, buyer: draft.buyer });
+      await check.mutateAsync({ slug, ticketId: chosen.id, buyer: draft.buyer, buyerType: draft.buyerType });
       saveDraft(slug, draft);
       onPaid(draft);
     } catch (err) {
       setError(errorText(err));
     }
   }
-  return { ticketId: chosen?.id ?? null, setTicketId, buyer, setBuyer, chosen, free, error, busy: check.isPending || start.isPending, submit };
+  return { ticketId: chosen?.id ?? null, setTicketId, buyerType: who, setBuyerType, kind, types, shown, buyer, setBuyer, chosen, view, free, error, busy: check.isPending || start.isPending, submit, fromLanding: !!saved?.ticketId && chosen?.id === saved.ticketId };
 }
 
 /* ---------- /r/:slug/register ---------- */
@@ -295,15 +482,37 @@ export function RegisterScreen({ slug }: { slug: string }) {
     <PublicFrame data={d}>
       <Steps on={2} />
       <main className="app-body" style={{ paddingTop: 14 }}>
-        <TicketChoice tickets={d.tickets} value={f.ticketId} onChange={f.setTicketId} />
+        {f.fromLanding && f.chosen && f.view ? (
+          <div className="card row-between" style={{ padding: "12px 14px", borderRadius: 12, gap: 10 }}>
+            <span className="col" style={{ gap: 2, minWidth: 0 }}>
+              <span className="small muted strong">Your ticket</span>
+              <span className="strong">{f.chosen.name}</span>
+              <span className="small muted">{[f.kind?.name, f.view.saveCents > 0 ? "Early bird" : ""].filter(Boolean).join(" · ")}</span>
+            </span>
+            <span className="col" style={{ alignItems: "flex-end", gap: 6 }}>
+              <span className="strong">{fmtMoney(f.view.cents)}</span>
+              <button type="button" className="btn btn-sm btn-w" onClick={() => navigate(`/r/${slug}`)}>Change</button>
+            </span>
+          </div>
+        ) : (
+          <>
+            {f.types.length ? (
+              <>
+                <div style={{ fontSize: 14, fontWeight: 800 }}>Who is registering?</div>
+                <WhoChips types={f.types} value={f.buyerType} onChange={f.setBuyerType} />
+              </>
+            ) : null}
+            {!f.types.length || f.buyerType ? <TicketChoice tickets={f.shown} value={f.ticketId} onChange={f.setTicketId} buyerType={f.buyerType} today={d.today} /> : null}
+          </>
+        )}
         <div style={{ fontSize: 14, fontWeight: 800, paddingTop: 4 }}>Your details</div>
-        <DetailsFields questions={d.page.questions} buyer={f.buyer} set={f.setBuyer} memberTicket={!!f.chosen?.membersOnly} />
+        <DetailsFields questions={d.page.questions} buyer={f.buyer} set={f.setBuyer} memberTicket={!!f.chosen?.membersOnly} kind={f.kind} />
       </main>
       <div className="app-footer">
         {f.error ? <div className="err" role="alert">{f.error}</div> : null}
         <div className="row-between" style={{ fontSize: 15, fontWeight: 800 }}>
           <span>Total</span>
-          <span>{f.chosen ? fmtMoney(f.chosen.priceCents) : ""}</span>
+          <span>{f.view ? fmtMoney(f.view.cents) : ""}</span>
         </div>
         <button className="btn btn-primary btn-lg btn-block" disabled={f.busy} onClick={() => f.submit(() => navigate(`/r/${slug}/pay`))}>
           {f.free ? "Register" : "Continue to payment"}
@@ -322,7 +531,7 @@ function PaymentStep({ slug, data, draft, embed, footer }: { slug: string; data:
   const [coupon, setCoupon] = useState(draft.coupon ?? "");
   const [couponError, setCouponError] = useState("");
   const [applying, setApplying] = useState(false);
-  const quote = trpc.registration.quote.useQuery({ slug, ticketId: draft.ticketId, coupon: coupon || undefined }, { retry: false });
+  const quote = trpc.registration.quote.useQuery({ slug, ticketId: draft.ticketId, coupon: coupon || undefined, buyerType: draft.buyerType }, { retry: false });
   const start = trpc.registration.start.useMutation();
   const [secret, setSecret] = useState<string | null>(null);
   const [startError, setStartError] = useState("");
@@ -339,7 +548,7 @@ function PaymentStep({ slug, data, draft, embed, footer }: { slug: string; data:
     setSecret(null);
     setStartError("");
     start
-      .mutateAsync({ slug, ticketId: draft.ticketId, buyer: draft.buyer, coupon: coupon || undefined, embed })
+      .mutateAsync({ slug, ticketId: draft.ticketId, buyer: draft.buyer, coupon: coupon || undefined, buyerType: draft.buyerType, embed })
       .then((res) => {
         if (res.kind === "paid") setSecret(res.clientSecret);
         else navigate(res.doneUrl);
@@ -358,7 +567,7 @@ function PaymentStep({ slug, data, draft, embed, footer }: { slug: string; data:
     }
     setApplying(true);
     try {
-      await utils.registration.quote.fetch({ slug, ticketId: draft.ticketId, coupon: code });
+      await utils.registration.quote.fetch({ slug, ticketId: draft.ticketId, coupon: code, buyerType: draft.buyerType });
       setCoupon(code);
       saveDraft(slug, { ...draft, coupon: code });
     } catch (err) {
@@ -370,7 +579,7 @@ function PaymentStep({ slug, data, draft, embed, footer }: { slug: string; data:
 
   async function registerFree() {
     try {
-      const res = await start.mutateAsync({ slug, ticketId: draft.ticketId, buyer: draft.buyer, coupon: coupon || undefined, embed });
+      const res = await start.mutateAsync({ slug, ticketId: draft.ticketId, buyer: draft.buyer, coupon: coupon || undefined, buyerType: draft.buyerType, embed });
       clearDraft(slug);
       if (res.kind === "free") navigate(res.doneUrl);
     } catch (err) {
@@ -645,8 +854,14 @@ export function EmbedScreen({ slug }: { slug: string }) {
             </>
           ) : (
             <>
-              <TicketChoice tickets={d.tickets} value={f.ticketId} onChange={f.setTicketId} />
-              <DetailsFields questions={d.page.questions} buyer={f.buyer} set={f.setBuyer} memberTicket={!!f.chosen?.membersOnly} />
+              {f.types.length ? (
+                <>
+                  <span style={{ fontSize: 14, fontWeight: 800 }}>Who is registering?</span>
+                  <WhoChips types={f.types} value={f.buyerType} onChange={f.setBuyerType} />
+                </>
+              ) : null}
+              {!f.types.length || f.buyerType ? <TicketChoice tickets={f.shown} value={f.ticketId} onChange={f.setTicketId} buyerType={f.buyerType} today={d.today} /> : null}
+              <DetailsFields questions={d.page.questions} buyer={f.buyer} set={f.setBuyer} memberTicket={!!f.chosen?.membersOnly} kind={f.kind} />
               {f.error ? <div className="err" role="alert">{f.error}</div> : null}
               <button className="btn btn-primary btn-lg btn-block" disabled={f.busy} onClick={() => f.submit((draft) => setPaying(draft))}>
                 {f.free ? "Register" : "Continue to payment"}

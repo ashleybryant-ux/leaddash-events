@@ -78,6 +78,13 @@
       "when": 1791685701768,
       "tag": "0010_host_people_and_address",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1791690278840,
+      "tag": "0011_ticket_price_dates",
+      "breakpoints": true
     }
   ]
 }
