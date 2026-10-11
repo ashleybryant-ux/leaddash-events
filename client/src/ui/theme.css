@@ -615,3 +615,64 @@ h1, h2, h3 { margin: 0; }
   .import-row-s, .import-row-p { grid-template-columns: 26px minmax(0, 1fr); }
   .import-row-s > :nth-child(n + 3), .import-row-p > :nth-child(n + 3) { grid-column: 2; }
 }
+
+/* LeadDash Events sign-in (organizations and staff): brand side, photo side, card across both */
+.as { --as-forest: #0F2A23; --as-ember: #EE8A36; position: relative; min-height: 100dvh; display: grid; grid-template-columns: 57fr 43fr; background: var(--as-forest); color: var(--ink); overflow: hidden; }
+.as-brand { position: relative; background: radial-gradient(120% 90% at 0% 100%, #1C4A3B 0%, var(--as-forest) 60%); color: #FFFFFF; display: flex; align-items: center; padding: 56px 0 56px clamp(40px, 8.5vw, 140px); overflow: hidden; }
+.as-brand::before, .as-brand::after { content: ""; position: absolute; border-radius: 0 100% 0 100%; pointer-events: none; }
+.as-brand::before { width: 520px; height: 520px; left: -260px; top: 18%; transform: rotate(-20deg); background: rgba(255, 255, 255, 0.035); }
+.as-brand::after { width: 320px; height: 320px; right: 8%; bottom: -180px; transform: rotate(10deg); background: rgba(238, 138, 54, 0.06); }
+.as-brand-in { position: relative; display: flex; flex-direction: column; }
+.as-h1 { margin: clamp(32px, 6vh, 60px) 0 0; font-size: clamp(40px, 4vw, 64px); line-height: 1.04; font-weight: 700; letter-spacing: -0.02em; color: #FFFFFF; }
+.as-h1 em { font-style: normal; color: var(--as-ember); white-space: nowrap; }
+.as-sub { margin: 22px 0 0; font-size: clamp(18px, 1.7vw, 24px); line-height: 1.45; color: #E3EEE8; }
+.as-feats { list-style: none; margin: 36px 0 0; padding: 0; display: flex; flex-direction: column; gap: 20px; font-size: 17px; color: #E3EEE8; }
+.as-feats li { display: flex; align-items: center; gap: 20px; }
+.as-feats i { display: inline-flex; color: #FFFFFF; }
+.as-short { display: none; }
+.as-photo { background: linear-gradient(90deg, rgba(15, 42, 35, 0.35), rgba(15, 42, 35, 0) 40%), url("/brand/signin-conference.jpg") 34% 50% / cover no-repeat; }
+.as-card { position: absolute; left: calc(57% - 160px); top: 50%; transform: translateY(-50%); width: 520px; background: #FBFBF9; border-radius: 22px; box-shadow: 0 24px 60px rgba(8, 24, 20, 0.28); padding: 40px 40px 30px; display: flex; flex-direction: column; gap: 0; }
+.as-card-logo { align-self: center; margin-bottom: 30px; }
+.as-card h2 { margin: 0; font-size: 38px; letter-spacing: -0.02em; line-height: 1.1; }
+.as-card-sub { margin: 12px 0 0; font-size: 15.5px; color: var(--muted); line-height: 1.5; }
+.as-field { margin-top: 26px; display: flex; flex-direction: column; gap: 10px; font-size: 15px; font-weight: 700; }
+.as-input { height: 56px; border: 1.5px solid #D4DCD8; border-radius: 12px; background: #FFFFFF; display: flex; align-items: center; gap: 12px; padding: 0 16px; color: #5B6A66; }
+.as-input:focus-within { border-color: #1F5F4A; box-shadow: 0 0 0 4px var(--brand-tint); }
+.as-input input { flex: 1; min-width: 0; height: 100%; border: none; outline: none; background: transparent; font: inherit; font-size: 16px; font-weight: 500; color: var(--ink); }
+.as-sent { margin-top: 14px; display: inline-flex; align-self: flex-start; gap: 8px; align-items: center; background: #E6F0EC; color: #1F5F4A; border-radius: 999px; padding: 7px 14px; font-size: 13.5px; font-weight: 700; max-width: 100%; overflow-wrap: anywhere; }
+.as-card .wl-codes { margin-top: 22px; gap: 10px; }
+.as-card .wl-codes input { height: 60px; font-size: 24px; background: #FFFFFF; border-color: #D4DCD8; }
+.as-card .wl-codes input:focus { border-color: var(--as-ember); box-shadow: 0 0 0 3px rgba(238, 138, 54, 0.25); }
+.as-card .err { margin-top: 14px; }
+.as-btn { margin-top: 28px; height: 58px; border: none; border-radius: 12px; background: var(--as-ember); color: #1A1206; font: inherit; font-size: 18px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; }
+.as-btn:hover { background: #E27E2A; }
+.as-btn:disabled { opacity: 0.6; cursor: default; }
+.as-foot { margin: 28px 0 0; text-align: center; font-size: 14px; color: var(--muted); line-height: 1.6; }
+.as-links button { border: none; background: none; padding: 0; font: inherit; font-weight: 700; color: #1F5F4A; cursor: pointer; }
+.as-tiles { display: none; }
+@media (max-width: 1099px) {
+  .as { display: flex; flex-direction: column; background: #F4F7F5; }
+  .as-photo { display: none; }
+  .as-brand { display: block; min-height: 330px; padding: 52px 24px 76px; background: linear-gradient(180deg, rgba(15, 42, 35, 0.4) 0%, rgba(15, 42, 35, 0.1) 28%, rgba(15, 42, 35, 0.55) 50%, rgba(15, 42, 35, 0.94) 74%, #0F2A23 100%), url("/brand/signin-conference.jpg") 56% 0 / auto 118% no-repeat; }
+  .as-brand::before, .as-brand::after { display: none; }
+  .as-brand-in { max-width: 520px; margin: 0 auto; }
+  .as-brand-in > img { height: 46px !important; }
+  .as-h1 { margin-top: 40px; font-size: clamp(30px, 8.6vw, 40px); }
+  .as-br { display: none; }
+  .as-sub { margin-top: 10px; font-size: 15px; color: #DCE9E3; }
+  .as-feats { display: none; }
+  .as-card { position: relative; left: auto; top: auto; transform: none; width: auto; max-width: 480px; margin: -40px 14px 0; align-self: center; width: calc(100% - 28px); padding: 24px 20px 20px; border-radius: 22px; box-shadow: 0 16px 40px rgba(8, 24, 20, 0.18); }
+  .as-card-logo { display: none; }
+  .as-card h2 { font-size: 26px; }
+  .as-card-sub { margin-top: 6px; font-size: 14px; }
+  .as-field { margin-top: 18px; font-size: 14px; gap: 8px; }
+  .as-input { height: 52px; }
+  .as-btn { margin-top: 16px; height: 54px; font-size: 16.5px; }
+  .as-card .wl-codes { margin-top: 16px; gap: 8px; }
+  .as-card .wl-codes input { height: 54px; font-size: 22px; border-radius: 10px; }
+  .as-foot { margin-top: 16px; font-size: 13px; }
+  .as-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; list-style: none; margin: 18px auto 0; padding: 0 14px 28px; width: 100%; max-width: 508px; }
+  .as-tiles li { background: #FFFFFF; border: 1px solid var(--line); border-radius: 14px; padding: 12px; display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 700; }
+  .as-tiles i { width: 34px; height: 34px; flex-shrink: 0; border-radius: 10px; background: var(--brand-tint); color: var(--brand); display: inline-flex; align-items: center; justify-content: center; }
+  .as-tiles i svg { width: 20px; height: 20px; }
+}

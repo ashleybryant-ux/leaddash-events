@@ -79,7 +79,7 @@ export function EventWelcome({ event, children, register = true }: { event: Publ
 }
 
 /** Six boxes for the emailed code. Typing moves to the next box; pasting fills them all. */
-function CodeBoxes({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+export function CodeBoxes({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const refs = useRef<(HTMLInputElement | null)[]>([]);
   const digits = Array.from({ length: 6 }, (_, i) => value[i] ?? "");
   const put = (i: number, raw: string) => {

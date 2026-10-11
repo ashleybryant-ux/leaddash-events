@@ -9,7 +9,7 @@ import { fmtDate, fmtDates, fmtMoney } from "@shared/format";
 import { eventHasEnded } from "@shared/time";
 import { US_STATES, addressLines, hasPlace, mapsLink } from "@shared/address";
 import { MapPreview } from "../ui/MapPreview";
-import { SignIn } from "./SignIn";
+import { AdminSignInPage } from "./AdminSignIn";
 import { IconCheck, IconLock } from "../ui/icons";
 import { LeadDashLogo } from "../ui/Logo";
 
@@ -19,6 +19,7 @@ export function HomeScreen() {
   const mine = trpc.core.events.mine.useQuery(undefined, { enabled: !!auth.data });
   const [, navigate] = useLocation();
   if (auth.isLoading) return <PageLoading />;
+  if (!auth.data) return <AdminSignInPage />;
   return (
     <div className="app">
       <header className="app-header">
@@ -27,9 +28,7 @@ export function HomeScreen() {
         </div>
       </header>
       <main className="app-body">
-        {!auth.data ? (
-          <SignIn title="Sign in" subtitle="Enter your email. We will send you a six-digit code." />
-        ) : mine.isLoading ? (
+        {mine.isLoading ? (
           <PageLoading />
         ) : (
           <>

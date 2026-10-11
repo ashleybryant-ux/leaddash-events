@@ -93,3 +93,12 @@ describe("LeadDash Events logo in emails", () => {
     expect(html).toContain('alt="LeadDash Events"');
   });
 });
+
+describe("LeadDash Events sign-in page", () => {
+  it("ships the conference photo the sign-in page uses, at a size that loads fast", async () => {
+    const { statSync, readFileSync } = await import("node:fs");
+    const photo = statSync(new URL("../client/public/brand/signin-conference.jpg", import.meta.url));
+    expect(photo.size).toBeLessThan(400_000);
+    expect(readFileSync(new URL("../client/src/ui/theme.css", import.meta.url), "utf8")).toContain('url("/brand/signin-conference.jpg")');
+  });
+});

@@ -13,7 +13,7 @@ import { trpc, type RouterOutputs } from "../lib/trpc";
 import { ErrorNote, PageLoading } from "../ui/components";
 import { LeadDashLogo } from "../ui/Logo";
 import { IconAward, IconCalendar, IconChart, IconChevron, IconFolder, IconGear, IconHome, IconMenu, IconMoney, IconPeople, IconPhone, IconSearch, IconSignOut, IconStar, IconTicket, IconTools } from "../ui/icons";
-import { SignIn } from "../core/SignIn";
+import { AdminSignInPage } from "../core/AdminSignIn";
 import { fmtDates } from "@shared/format";
 
 type Me = NonNullable<RouterOutputs["auth"]["me"]>;
@@ -64,16 +64,7 @@ export function AdminApp({ eventId, children }: { eventId?: number; children: Re
 
   if (auth.isLoading || (eventId && event.isLoading)) return <PageLoading />;
   if (!auth.data) {
-    return (
-      <div className="center" style={{ minHeight: "100dvh", padding: 16 }}>
-        <div className="card card-pad" style={{ width: "100%", maxWidth: 420, padding: 28 }}>
-          <div className="row" style={{ marginBottom: 18 }}>
-            <LeadDashLogo height={52} />
-          </div>
-          <SignIn title="Admin sign-in" subtitle="Enter your email. We will send you a six-digit code." variant="admin" />
-        </div>
-      </div>
-    );
+    return <AdminSignInPage />;
   }
   if (eventId && event.error) return <div className="admin-main"><ErrorNote error={event.error} /></div>;
   const ev = eventId ? event.data ?? null : null;
