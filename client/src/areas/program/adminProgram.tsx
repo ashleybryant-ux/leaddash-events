@@ -8,6 +8,7 @@ import { Avatar, EditSection, Empty, ErrorNote, Field, PageLoading, Pill, QR, TH
 import { errorText, toast } from "../../ui/toast";
 import { fmtDate, fmtDates, fmtRange, fmtTime, fmtWhenTime } from "@shared/format";
 import { SessionSlides, SessionsTabs, SlidesActions, SlidesTab, inSessionsTab } from "./SessionSlides";
+import { ImportProgramModal } from "./importProgram";
 import { AgreementPill, SendAgreementsButton, SpeakerAgreementSection, SpeakerTabs, WelcomePill, inSpeakerTab, useSpeakerAgreements } from "../agreements/SpeakerAgreementBits";
 
 /* ---------------- Shared bits ---------------- */
@@ -241,6 +242,8 @@ export function AdminSessionsScreen() {
   const [open, setOpen] = useState<number | null>(null);
   const [adding, setAdding] = useState<SessionForm | null>(null);
   const [tab, setTab] = useState("all");
+  const [importing, setImporting] = useState(false);
+  const [, navigate] = useLocation();
   const canEdit = can("sessions", "edit");
 
   return (
@@ -250,6 +253,11 @@ export function AdminSessionsScreen() {
       actions={
         <>
           {tab === "slides" ? <SlidesActions eventId={event.id} canEdit={canEdit} /> : can("announcements", "edit") ? <Link href={`/admin/e/${event.id}/announcements`} className="btn">Send announcement</Link> : null}
+          {canEdit ? (
+            <button className="btn" onClick={() => setImporting(true)}>
+              Import
+            </button>
+          ) : null}
           {canEdit ? (
             <button className="btn btn-primary" onClick={() => setAdding(blankSession(event.startDate))}>
               Add session
@@ -317,6 +325,7 @@ export function AdminSessionsScreen() {
           )}
         </>
       )}
+      <ImportProgramModal kind="sessions" open={importing} onClose={() => setImporting(false)} onOpenSpeakers={() => navigate(`/admin/e/${event.id}/speakers`)} />
     </AdminPage>
   );
 }
@@ -769,6 +778,7 @@ export function AdminSpeakersScreen() {
   const [editing, setEditing] = useState(false);
   const missingSlides = (s: { sessions: { id: number }[] }) => s.sessions.some((x) => noSlides.has(x.id));
   const [spTab, setSpTab] = useState<string>("all");
+  const [importing, setImporting] = useState(false);
   return (
     <AdminPage
       title={event.name}
@@ -780,6 +790,9 @@ export function AdminSpeakersScreen() {
               Edit agreement
             </Link>
             <SendAgreementsButton eventId={event.id} />
+            <button className="btn" onClick={() => setImporting(true)}>
+              Import
+            </button>
             <button className="btn btn-primary" onClick={() => setAdding(blankSpeaker)}>
               Add speaker
             </button>
@@ -874,6 +887,7 @@ export function AdminSpeakersScreen() {
         </div>
         </div>
       )}
+      <ImportProgramModal kind="speakers" open={importing} onClose={() => setImporting(false)} />
     </AdminPage>
   );
 }

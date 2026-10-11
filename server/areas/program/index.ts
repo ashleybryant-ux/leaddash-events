@@ -10,6 +10,7 @@ import { announcementsRouter, runScheduledAnnouncements, runSessionReminders } f
 import { alertsRouter, brandingRouter, diningRouter, hostRouter } from "./info";
 import { helpRouter, seedHelp } from "./help";
 import { registerSlidesHttp, slidesRouter } from "./slides";
+import { importRouter } from "./importer";
 
 export const programRouter = router({
   sessions: sessionsRouter,
@@ -21,6 +22,7 @@ export const programRouter = router({
   branding: brandingRouter,
   alerts: alertsRouter,
   slides: slidesRouter,
+  import: importRouter,
 });
 
 export const programArea: AreaModule<typeof programRouter> = {

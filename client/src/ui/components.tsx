@@ -178,11 +178,11 @@ export function Lightbox({ open, onClose, label, children }: { open: boolean; on
   );
 }
 
-export function Modal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
+export function Modal({ open, onClose, title, children, wide }: { open: boolean; onClose: () => void; title: string; children: ReactNode; wide?: boolean }) {
   if (!open) return null;
   return (
     <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div role="dialog" aria-label={title} className="modal">
+      <div role="dialog" aria-label={title} className={wide ? "modal modal-wide" : "modal"}>
         <div className="row-between">
           <span className="h3">{title}</span>
           <button className="icon-btn" aria-label="Close" onClick={onClose} style={{ width: 36, height: 36 }}>
