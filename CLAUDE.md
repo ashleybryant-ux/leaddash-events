@@ -33,6 +33,7 @@ A conference app sold as LeadDash Events (first customer: NABC). Each event bran
 - Screens say "organization", never "association". Placeholders and sample text are generic: never a customer's real name or details (no NABC).
 - The LeadDash Events wordmark stays in the admin. An event's own logo and colors appear only on attendee-facing pages (the app, checkout page, emails, badges, certificates).
 - Every route checks access with `server/_core/access.ts` helpers. Attendees only see their own data. Staff see what their role allows.
+- Each organization may add only the events LeadDash includes (`organizations.eventAllowance`, set by staff on `/admin/leaddash`). Once an event's last day is over in its time zone, its dates and status lock; only LeadDash staff can move them.
 - Events only: no membership, dues, member directory or member hub. Members tickets ask for a member ID; the organization checks it in its own membership system.
 - Uploads: images and documents go through tRPC (15 MB); slide decks stream to `/api/upload/session-file` (100 MB). nginx `client_max_body_size` must stay at least 110m.
 - Never commit keys, passwords or `.env`. No client or patient health information anywhere.

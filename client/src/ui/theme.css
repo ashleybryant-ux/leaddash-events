@@ -580,3 +580,7 @@ h1, h2, h3 { margin: 0; }
 .kv-tight { display: grid; grid-template-columns: 164px minmax(0, 1fr); row-gap: 6px; column-gap: 12px; font-size: 13.5px; }
 .kv-tight .k { color: var(--muted); }
 .choices-hint { background: var(--brand-tint-2); border: 1px solid var(--brand-tint); color: var(--brand); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; font-weight: 700; }
+
+/* Event limit and the date lock on ended events */
+.input-locked { display: flex; align-items: center; gap: 6px; background: var(--line-2); color: var(--muted); cursor: not-allowed; }
+.limit-event { display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 13.5px; }

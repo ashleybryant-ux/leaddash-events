@@ -3,13 +3,14 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { trpc } from "../lib/trpc";
 import { AdminPage, useAdmin, useAdminEvent } from "../shells/AdminShell";
-import { EditSection, Empty, ErrorNote, Field, KV, Modal, PageLoading, Pill, UploadButton, confirmAction, NumStrip } from "../ui/components";
+import { EditSection, Empty, ErrorNote, ExpandRow, Field, KV, Modal, PageLoading, Pill, UploadButton, confirmAction, NumStrip } from "../ui/components";
 import { errorText, toast } from "../ui/toast";
-import { fmtDates, fmtMoney } from "@shared/format";
+import { fmtDate, fmtDates, fmtMoney } from "@shared/format";
+import { eventHasEnded } from "@shared/time";
 import { US_STATES, addressLines, hasPlace, mapsLink } from "@shared/address";
 import { MapPreview } from "../ui/MapPreview";
 import { SignIn } from "./SignIn";
-import { IconCheck } from "../ui/icons";
+import { IconCheck, IconLock } from "../ui/icons";
 import { LeadDashLogo } from "../ui/Logo";
 
 /** "/": where a signed-in person goes (their events, admin). */
@@ -62,8 +63,12 @@ export function AdminHomeScreen() {
   const { me, orgId, setOrgId } = useAdmin();
   const events = trpc.core.events.list.useQuery({ orgId: orgId ?? 0 }, { enabled: !!orgId });
   const allOrgs = trpc.core.org.all.useQuery(undefined, { enabled: me.isLeadDashStaff });
+  const org = trpc.core.org.get.useQuery({ orgId: orgId ?? 0 }, { enabled: !!orgId });
   const [creating, setCreating] = useState(false);
+  const [atLimit, setAtLimit] = useState(false);
   const [newOrg, setNewOrg] = useState(false);
+  const included = org.data?.eventAllowance ?? 1;
+  const used = events.data?.length ?? 0;
 
   return (
     <AdminPage
@@ -76,7 +81,7 @@ export function AdminHomeScreen() {
             </button>
           ) : null}
           {orgId ? (
-            <button className="btn btn-primary" onClick={() => setCreating(true)}>
+            <button className="btn btn-primary" disabled={!events.data || !org.data} onClick={() => (used >= included ? setAtLimit(true) : setCreating(true))}>
               New event
             </button>
           ) : null}
@@ -134,7 +139,7 @@ export function AdminHomeScreen() {
                 <div>{fmtDates(e.startDate, e.endDate)}</div>
                 <div className="muted clip">{e.venueName || "Not set"}</div>
                 <div>
-                  <Pill tone={e.status === "live" ? "green" : e.status === "draft" ? "orange" : "gray"}>{e.status === "live" ? "Live" : e.status === "draft" ? "Draft" : "Ended"}</Pill>
+                  {e.status === "ended" || eventHasEnded(e.endDate, e.timezone) ? <Pill tone="gray">Ended</Pill> : <Pill tone={e.status === "live" ? "green" : "orange"}>{e.status === "live" ? "Live" : "Draft"}</Pill>}
                 </div>
                 <Link className="btn btn-sm btn-w" href={`/admin/e/${e.id}`}>
                   Open
@@ -145,8 +150,38 @@ export function AdminHomeScreen() {
         </div>
       )}
       <NewEventModal open={creating} onClose={() => setCreating(false)} orgId={orgId} />
+      <EventLimitModal open={atLimit} onClose={() => setAtLimit(false)} included={included} orgName={org.data?.name ?? ""} events={events.data ?? []} />
       <NewOrgModal open={newOrg} onClose={() => setNewOrg(false)} onCreated={(id) => setOrgId(id)} />
     </AdminPage>
+  );
+}
+
+/** Shown instead of the new event form once the organization has added every event its account includes. */
+function EventLimitModal({ open, onClose, included, orgName, events }: { open: boolean; onClose: () => void; included: number; orgName: string; events: { id: number; name: string; startDate: string; endDate: string }[] }) {
+  const one = included === 1;
+  const mail = `mailto:info@leaddash.io?subject=${encodeURIComponent(`Add an event for ${orgName || "our organization"}`)}`;
+  return (
+    <Modal open={open} onClose={onClose} title={`Your account includes ${included} event${one ? "" : "s"}`}>
+      <p className="muted" style={{ margin: 0, fontSize: 14, lineHeight: 1.55 }}>
+        {one ? "Your included event is already set up." : "Your included events are already set up."} To add another event, contact LeadDash and we will add it to your account.
+      </p>
+      <div className="col gap-8">
+        {events.map((e) => (
+          <div key={e.id} className="limit-event">
+            <span className="strong">{e.name}</span>
+            <span className="small muted">{fmtDates(e.startDate, e.endDate)}</span>
+          </div>
+        ))}
+      </div>
+      <div className="row gap-10" style={{ justifyContent: "flex-end" }}>
+        <button className="btn btn-sm" style={{ width: 140 }} onClick={onClose}>
+          Close
+        </button>
+        <a className="btn btn-sm btn-solid" style={{ width: 140 }} href={mail}>
+          Email LeadDash
+        </a>
+      </div>
+    </Modal>
   );
 }
 
@@ -426,6 +461,7 @@ export function LeadDashToolsScreen() {
     <AdminPage title="LeadDash tools" sub={`${o.name} · Only LeadDash staff see this page`}>
       {params.get("platform") === "connected" ? <div className="banner banner-ok">The LeadDash platform is connected.</div> : null}
       {params.get("platform") === "failed" ? <div className="banner banner-bad">The LeadDash platform connection did not finish. Try again.</div> : null}
+        <StaffEventsCard orgId={orgId} allowance={o.eventAllowance} />
         <div className="card card-pad col gap-12">
           <span className="h3" style={{ fontSize: 14 }}>LeadDash platform</span>
           <KV label="Marketplace app">{platform.data?.configured ? "Set on the server" : "GHL_CLIENT_ID and GHL_CLIENT_SECRET are not set"}</KV>
@@ -459,6 +495,120 @@ export function LeadDashToolsScreen() {
           </div>
         </div>
     </AdminPage>
+  );
+}
+
+/** LeadDash tools: how many events the organization may add, its events, and moving an ended event's dates. */
+function StaffEventsCard({ orgId, allowance }: { orgId: number; allowance: number }) {
+  const utils = trpc.useUtils();
+  const events = trpc.core.events.list.useQuery({ orgId });
+  const setAllowance = trpc.core.org.setEventAllowance.useMutation();
+  const setDates = trpc.core.events.setDates.useMutation();
+  const [n, setN] = useState(String(allowance));
+  const [openId, setOpenId] = useState<number | null>(null);
+  const [dates, setDatesForm] = useState({ startDate: "", endDate: "" });
+  const used = events.data?.length ?? 0;
+  const cols = "minmax(0, 1fr) 80px 120px";
+  return (
+    <div className="card card-pad col gap-12">
+      <EditSection
+        title="Events"
+        saving={setAllowance.isPending}
+        onCancel={() => setN(String(allowance))}
+        onSave={async () => {
+          await setAllowance.mutateAsync({ orgId, eventAllowance: Number(n) });
+          await utils.core.org.get.invalidate();
+          toast("Saved");
+        }}
+        view={
+          <div>
+            <KV label="Events included">{String(allowance)}</KV>
+            <KV label="Events added">{events.data ? `${used} of ${allowance}` : ""}</KV>
+          </div>
+        }
+        edit={
+          <div className="row gap-10" style={{ alignItems: "flex-end" }}>
+            <Field label="Events included">
+              <input className="input" style={{ width: 90 }} inputMode="numeric" value={n} onChange={(e) => setN(e.target.value.replace(/\D/g, ""))} />
+            </Field>
+            <span className="small muted" style={{ paddingBottom: 10 }}>They have {used} event{used === 1 ? "" : "s"} now</span>
+          </div>
+        }
+      />
+      {events.data?.length ? (
+        <div className="table">
+          <div className="table-inner">
+            {events.data.map((e) => {
+              const ended = eventHasEnded(e.endDate, e.timezone);
+              const cells = [
+                <div key="n" className="col" style={{ gap: 2 }}>
+                  <span className="strong">{e.name}</span>
+                  <span className="small muted">{fmtDates(e.startDate, e.endDate)}</span>
+                </div>,
+                <div key="s">
+                  <Pill tone={ended ? "gray" : e.status === "live" ? "green" : e.status === "draft" ? "orange" : "gray"}>{ended || e.status === "ended" ? "Ended" : e.status === "live" ? "Live" : "Draft"}</Pill>
+                </div>,
+              ];
+              if (!ended) {
+                return (
+                  <div key={e.id} className="trow" style={{ gridTemplateColumns: cols }}>
+                    {cells}
+                    <button type="button" className="btn btn-sm btn-w" disabled title="Organizations change dates themselves until the event ends.">
+                      Change dates
+                    </button>
+                  </div>
+                );
+              }
+              return (
+                <ExpandRow
+                  key={e.id}
+                  cols={cols}
+                  cells={cells}
+                  open={openId === e.id}
+                  closedLabel="Change dates"
+                  onToggle={() => {
+                    setOpenId(openId === e.id ? null : e.id);
+                    setDatesForm({ startDate: e.startDate, endDate: e.endDate });
+                  }}
+                >
+                  <div className="col gap-10">
+                    <div className="row gap-10">
+                      <Field label="Starts">
+                        <input className="input" type="date" value={dates.startDate} onChange={(x) => setDatesForm({ ...dates, startDate: x.target.value })} />
+                      </Field>
+                      <Field label="Ends">
+                        <input className="input" type="date" value={dates.endDate} onChange={(x) => setDatesForm({ ...dates, endDate: x.target.value })} />
+                      </Field>
+                    </div>
+                    <div className="row gap-10">
+                      <button
+                        className="btn btn-sm btn-solid btn-w"
+                        disabled={setDates.isPending}
+                        onClick={async () => {
+                          try {
+                            await setDates.mutateAsync({ eventId: e.id, ...dates });
+                            await utils.core.events.list.invalidate();
+                            setOpenId(null);
+                            toast("Saved");
+                          } catch (err) {
+                            toast(errorText(err), true);
+                          }
+                        }}
+                      >
+                        Save
+                      </button>
+                      <button className="btn btn-sm btn-w" onClick={() => setOpenId(null)}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </ExpandRow>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -526,8 +676,22 @@ export function EventSettingsScreen() {
     await update.mutateAsync({ eventId: ev.id, ...b, ...(next.place ?? place), capacity: b.capacity ? Number(b.capacity) : null });
     await utils.core.events.get.invalidate();
   };
+  const locked = ev.ended;
+  const lockedBox = (text: string) => (
+    <div className="input input-locked">
+      <IconLock size={13} />
+      {text}
+    </div>
+  );
+  const statusLabel = (s: string) => (s === "live" ? "Live" : s === "draft" ? "Draft" : "Ended");
   return (
     <AdminPage title="Event settings">
+      {locked ? (
+        <div className="banner banner-warn" style={{ justifyContent: "flex-start" }}>
+          <IconLock size={16} />
+          This event ended on {fmtDate(ev.endDate)}, so its dates are locked. To run another event, add a new one from Events.
+        </div>
+      ) : null}
       <div className="card card-pad">
         <EditSection
           title="Event"
@@ -554,10 +718,10 @@ export function EventSettingsScreen() {
                 <input className="input" value={d.shortName} onChange={set("shortName")} />
               </Field>
               <Field label="Starts">
-                <input className="input" type="date" value={d.startDate} onChange={set("startDate")} />
+                {locked ? lockedBox(fmtDate(ev.startDate)) : <input className="input" type="date" value={d.startDate} onChange={set("startDate")} />}
               </Field>
               <Field label="Ends">
-                <input className="input" type="date" value={d.endDate} onChange={set("endDate")} />
+                {locked ? lockedBox(fmtDate(ev.endDate)) : <input className="input" type="date" value={d.endDate} onChange={set("endDate")} />}
               </Field>
               <Field label="Time zone">
                 <input className="input" value={d.timezone} onChange={set("timezone")} />
@@ -566,12 +730,22 @@ export function EventSettingsScreen() {
                 <input className="input" inputMode="numeric" value={d.capacity ?? ""} onChange={(e) => setD({ ...d, capacity: e.target.value ? Number(e.target.value.replace(/\D/g, "")) : null })} />
               </Field>
               <Field label="Status">
-                <select className="select" value={d.status} onChange={set("status")}>
-                  <option value="draft">Draft</option>
-                  <option value="live">Live</option>
-                  <option value="ended">Ended</option>
-                </select>
+                {locked && ev.status === "ended" ? (
+                  lockedBox("Ended")
+                ) : locked ? (
+                  <select className="select" value={d.status} onChange={set("status")}>
+                    <option value={ev.status}>{statusLabel(ev.status)}</option>
+                    <option value="ended">Ended</option>
+                  </select>
+                ) : (
+                  <select className="select" value={d.status} onChange={set("status")}>
+                    <option value="draft">Draft</option>
+                    <option value="live">Live</option>
+                    <option value="ended">Ended</option>
+                  </select>
+                )}
               </Field>
+              {locked ? <span className="small muted span-3">Dates and status lock after the event ends.</span> : null}
             </div>
           }
         />

@@ -10,6 +10,7 @@ import { markRead, unreadCount } from "../_core/push";
 import { agencyStatus, authorizeUrl, platformConfigured } from "../_core/platform";
 import { sign } from "../_core/crypto";
 import { slugify } from "@shared/format";
+import { eventHasEnded } from "@shared/time";
 import { userForEmail } from "./auth";
 import { seedEvent } from "../areas";
 
@@ -42,6 +43,13 @@ export function publicEvent(ev: typeof schema.events.$inferSelect) {
     features: ev.features,
   };
 }
+
+/** Events the organization has added (events are never deleted, so this is every event it has used). */
+function eventCount(orgId: number) {
+  return getDb().select({ c: count() }).from(schema.events).where(eq(schema.events.orgId, orgId)).get()?.c ?? 0;
+}
+
+const plural = (n: number) => `${n} event${n === 1 ? "" : "s"}`;
 
 export const coreRouter = router({
   org: router({
@@ -137,6 +145,18 @@ export const coreRouter = router({
       return getDb().select().from(schema.organizations).all();
     }),
 
+    /** LeadDash staff: how many events the organization may add. Never below the events it already has. */
+    setEventAllowance: protectedProcedure
+      .input(z.object({ orgId: z.number(), eventAllowance: z.number().int().min(1).max(500) }))
+      .mutation(({ ctx, input }) => {
+        if (!isLeadDashStaff(ctx.user)) throw forbidden();
+        const used = eventCount(input.orgId);
+        if (input.eventAllowance < used) throw new TRPCError({ code: "BAD_REQUEST", message: `They already have ${used} events. Enter ${used} or more.` });
+        getDb().update(schema.organizations).set({ eventAllowance: input.eventAllowance }).where(eq(schema.organizations.id, input.orgId)).run();
+        audit(ctx.user, { orgId: input.orgId, action: "org.event_allowance", detail: String(input.eventAllowance) });
+        return { ok: true };
+      }),
+
     /** LeadDash staff: which LeadDash platform sub-account the organization mirrors contacts into. */
     setPlatformLocation: protectedProcedure
       .input(z.object({ orgId: z.number(), locationId: z.string().max(80).nullable() }))
@@ -189,6 +209,7 @@ export const coreRouter = router({
         if (input.endDate < input.startDate) throw new TRPCError({ code: "BAD_REQUEST", message: "The end date is before the start date." });
         const db = getDb();
         const org = db.select().from(schema.organizations).where(eq(schema.organizations.id, input.orgId)).get()!;
+        if (eventCount(org.id) >= org.eventAllowance) throw new TRPCError({ code: "FORBIDDEN", message: `Your account includes ${plural(org.eventAllowance)}. Contact LeadDash to add another.` });
         let slug = slugify(`${org.slug}-${input.shortName || input.name}`);
         if (db.select().from(schema.events).where(eq(schema.events.slug, slug)).get()) slug = `${slug}-${Date.now().toString(36)}`;
         const ev = db
@@ -263,6 +284,8 @@ export const coreRouter = router({
         coverUrl: fileUrl(ev.branding.coverFileId),
         logoUrl: fileUrl(ev.branding.logoFileId),
         hostImageUrl: fileUrl(ev.hostImageFileId),
+        /** The last day is over: dates and status are locked. */
+        ended: eventHasEnded(ev.endDate, ev.timezone),
         access: { admin: access.admin, areas: access.areas, kinds: Array.from(access.kinds), vendorIds: access.vendorIds },
         orgRole: orgRole(ctx.user, ev.orgId),
       };
@@ -290,7 +313,26 @@ export const coreRouter = router({
       .mutation(({ ctx, input }) => {
         requireEventAdmin(ctx.user, input.eventId);
         const { eventId, ...rest } = input;
+        const ev = getEvent(eventId);
+        // An event that is over keeps its dates, so it can't be reused as next year's event.
+        if (eventHasEnded(ev.endDate, ev.timezone)) {
+          if (rest.startDate !== ev.startDate || rest.endDate !== ev.endDate) throw new TRPCError({ code: "BAD_REQUEST", message: "This event has ended, so its dates are locked. Add a new event from Events." });
+          if (rest.status !== ev.status && rest.status !== "ended") throw new TRPCError({ code: "BAD_REQUEST", message: "This event has ended, so it can't be opened again." });
+        }
+        if (rest.endDate < rest.startDate) throw new TRPCError({ code: "BAD_REQUEST", message: "The end date is before the start date." });
         getDb().update(schema.events).set(rest).where(eq(schema.events.id, eventId)).run();
+        return { ok: true };
+      }),
+
+    /** LeadDash staff: move an event's dates, including after it ended. */
+    setDates: protectedProcedure
+      .input(z.object({ eventId: z.number(), startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }))
+      .mutation(({ ctx, input }) => {
+        if (!isLeadDashStaff(ctx.user)) throw forbidden();
+        if (input.endDate < input.startDate) throw new TRPCError({ code: "BAD_REQUEST", message: "The end date is before the start date." });
+        const ev = getEvent(input.eventId);
+        getDb().update(schema.events).set({ startDate: input.startDate, endDate: input.endDate }).where(eq(schema.events.id, ev.id)).run();
+        audit(ctx.user, { orgId: ev.orgId, eventId: ev.id, action: "event.dates", detail: `${input.startDate} to ${input.endDate}` });
         return { ok: true };
       }),
 

@@ -35,6 +35,17 @@ export function dateToZoned(at: Date, timeZone: string) {
   return { date: `${get("year")}-${get("month")}-${get("day")}`, time: `${get("hour") === "24" ? "00" : get("hour")}:${get("minute")}` };
 }
 
+/** True once the event's last day ("2027-04-24") is over in its own time zone. */
+export function eventHasEnded(endDate: string, timeZone: string, now: Date = new Date()) {
+  let today: string;
+  try {
+    today = dateToZoned(now, timeZone).date;
+  } catch {
+    today = dateToZoned(now, "America/Chicago").date;
+  }
+  return today > endDate;
+}
+
 /** Minutes between two "HH:MM" times on the same day. */
 export function minutesBetween(start: string, end: string) {
   const [a, b] = start.split(":").map(Number);

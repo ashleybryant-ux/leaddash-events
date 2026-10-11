@@ -21,6 +21,8 @@ export const organizations = sqliteTable("organizations", {
   colorHighlight: text("color_highlight").notNull().default(""),
   /** LeadDash platform (GoHighLevel) sub-account this association mirrors contacts into. */
   platformLocationId: text("platform_location_id"),
+  /** How many events the organization may add. Set by LeadDash staff (a sponsored organization gets 1). */
+  eventAllowance: integer("event_allowance").notNull().default(1),
   createdAt: createdAt(),
 });
 

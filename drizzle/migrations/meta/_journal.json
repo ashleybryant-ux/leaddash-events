@@ -85,6 +85,13 @@
       "when": 1791690278840,
       "tag": "0011_ticket_price_dates",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1791732681863,
+      "tag": "0012_org_event_allowance",
+      "breakpoints": true
     }
   ]
 }
