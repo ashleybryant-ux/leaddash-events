@@ -198,7 +198,14 @@ export function AgendaScreen() {
           <div className="label-caps" style={{ letterSpacing: "0.06em", paddingTop: 4 }}>{fmtTime(g.time)}</div>
           {g.items.map((s) => (
             <div key={s.id} className="card" style={{ padding: 14, display: "flex", gap: 12, alignItems: "flex-start" }}>
-              <Link href={`${base}/session/${s.id}`} className="grow col" style={{ gap: 6, textDecoration: "none", color: "inherit" }}>
+              {s.speakerPhotos.length ? (
+                <Link href={`${base}/session/${s.id}`} className={`agenda-faces${s.speakerPhotos.length > 1 ? " two" : ""}`} aria-hidden="true" tabIndex={-1}>
+                  {s.speakerPhotos.map((p) => (
+                    <Avatar key={p.name} url={p.headshotUrl} name={p.name} size={s.speakerPhotos.length > 1 ? 40 : 52} />
+                  ))}
+                </Link>
+              ) : null}
+              <Link href={`${base}/session/${s.id}`} className="grow col" style={{ gap: 6, textDecoration: "none", color: "inherit", minWidth: 0 }}>
                 <div style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.3 }}>{s.title}</div>
                 <div className="muted" style={{ fontSize: 13 }}>
                   {fmtRange(s.startTime, s.endTime)}

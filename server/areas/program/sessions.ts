@@ -289,6 +289,7 @@ export const sessionsRouter = router({
         seatsLeft: s.requiresSignup && s.capacity ? Math.max(0, s.capacity - (taken.get(s.id) ?? 0)) : null,
         onMy: mine.has(s.id),
         speakers: (speakers.get(s.id) ?? []).map((p) => p.name),
+        speakerPhotos: (speakers.get(s.id) ?? []).slice(0, 2).map((p) => ({ name: p.name, headshotUrl: p.headshotUrl })),
       })),
     };
   }),

@@ -330,6 +330,12 @@ h1, h2, h3 { margin: 0; }
 .rte-tools button[aria-pressed="true"] { background: var(--brand); border-color: var(--brand); color: #FFFFFF; }
 .rte-box { padding: 10px 12px; outline: none; max-height: 520px; overflow-y: auto; }
 
+/* ---------- Attendee app: agenda speaker faces ---------- */
+.agenda-faces { flex-shrink: 0; display: flex; width: 52px; }
+.agenda-faces .avatar { border: 2px solid #FFFFFF; box-sizing: content-box; }
+.agenda-faces.two { flex-direction: column; }
+.agenda-faces.two .avatar + .avatar { margin-top: -14px; margin-left: 12px; }
+
 /* ---------- Attendee app: Home tab ---------- */
 .home-hero { position: relative; min-height: 250px; background: var(--brand) center / cover no-repeat; color: #FFFFFF; display: flex; flex-direction: column; justify-content: flex-end; }
 .home-hero::before { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, color-mix(in srgb, var(--brand) 20%, transparent) 0%, color-mix(in srgb, var(--brand) 70%, #000000) 100%); }

@@ -195,6 +195,8 @@ describe("program", () => {
     expect(list[0]).toMatchObject({ name: "Taylor Reed, PhD", sessions: [{ title: "Trauma Care", role: "presenter" }] });
     const detail = await api.program.sessions.get({ slug: event.slug, sessionId: s.id });
     expect(detail.speakers[0]).toMatchObject({ name: "Taylor Reed, PhD", role: "presenter" });
+    const agenda = await api.program.sessions.agenda({ slug: event.slug });
+    expect(agenda.sessions.find((x) => x.id === s.id)?.speakerPhotos).toEqual([{ name: "Taylor Reed, PhD", headshotUrl: null }]);
   });
 
   it("lets admins save branding, features and the host page", async () => {
