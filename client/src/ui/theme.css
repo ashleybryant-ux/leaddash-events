@@ -161,6 +161,8 @@ h1, h2, h3 { margin: 0; }
 .app { min-height: 100dvh; max-width: 480px; margin: 0 auto; background: var(--app-bg, var(--ground)); font-family: var(--app-font, var(--font)); display: flex; flex-direction: column; position: relative; }
 .app .btn { border-radius: var(--btn-radius, 10px); }
 @media (min-width: 520px) { .app { border-left: 1px solid var(--line); border-right: 1px solid var(--line); } }
+/* Reading pages (call for proposals): a wider column on desktop, the same phone layout below 900px. */
+@media (min-width: 900px) { .app.app-wide { max-width: 880px; } .app.app-wide .app-header, .app.app-wide .app-body { padding-left: 32px; padding-right: 32px; } }
 .app-header { background-color: var(--header-bg, var(--brand)); background-image: var(--header-image, none); background-size: cover; background-position: center; border-bottom: 3px solid var(--header-border, transparent); color: var(--header-ink, #FFFFFF); padding: calc(20px + env(safe-area-inset-top)) 20px 18px; display: flex; flex-direction: column; gap: 14px; }
 .app-header .eyebrow { color: var(--header-sub, var(--side-text)); }
 .app-header .title { font-size: 22px; font-weight: 800; }

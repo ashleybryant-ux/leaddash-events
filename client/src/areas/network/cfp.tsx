@@ -291,12 +291,12 @@ export function ProposalSubmitPage({ slug }: { slug: string }) {
   }, [info.data]);
 
   if (info.isLoading || auth.isLoading) return <PageLoading />;
-  if (info.error) return <div className="app"><ErrorNote error={info.error} /></div>;
+  if (info.error) return <div className="app app-wide"><ErrorNote error={info.error} /></div>;
   const i = info.data!;
   const opens = i.opensOn && new Date().toISOString().slice(0, 10) < i.opensOn;
 
   return (
-    <div className="app" style={brandStyle(i.branding, i.coverUrl)}>
+    <div className="app app-wide" style={brandStyle(i.branding, i.coverUrl)}>
       <Header info={i} />
       <main className="app-body" style={{ gap: 14 }}>
         {i.intro ? <div className="card" style={{ padding: 16 }}><RichText html={i.intro} /></div> : null}
