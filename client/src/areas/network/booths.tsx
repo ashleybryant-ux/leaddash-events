@@ -51,7 +51,11 @@ function useMessageVendor() {
 /** /exhibitors */
 export function ExhibitorsScreen() {
   const { slug, base, event } = useEventApp();
-  const [tab, setTab] = useState<"all" | "sponsors" | "exhibitors">("all");
+  // Home links straight to one tab with ?tab=sponsors or ?tab=exhibitors.
+  const [tab, setTab] = useState<"all" | "sponsors" | "exhibitors">(() => {
+    const t = new URLSearchParams(window.location.search).get("tab");
+    return t === "sponsors" || t === "exhibitors" ? t : "all";
+  });
   const list = trpc.network.exhibitors.list.useQuery({ slug }, { enabled: event.features.exhibitors });
   const msg = useMessageVendor();
   const all = list.data ?? [];

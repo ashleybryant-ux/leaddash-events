@@ -10,7 +10,7 @@ import { trpc } from "../../lib/trpc";
 import { AppScreen, useEventApp } from "../../shells/AttendeeShell";
 import { Sheet } from "../../ui/components";
 import { MapPreview } from "../../ui/MapPreview";
-import { IconAward, IconBadge, IconBell, IconBookmark, IconChevron, IconFood, IconHelp, IconImage, IconInfo, IconMap, IconMic, IconPin, IconQr, IconSearch, IconStore, IconUser, IconCalendar } from "../../ui/icons";
+import { IconAward, IconBadge, IconBell, IconBookmark, IconChevron, IconFood, IconHelp, IconImage, IconInfo, IconMap, IconMic, IconPin, IconQr, IconSearch, IconStore, IconUser, IconCalendar, IconStar } from "../../ui/icons";
 import { fmtDate, fmtDates, fmtTime, initials } from "@shared/format";
 import { addressLines, directionsLink, hasPlace } from "@shared/address";
 import { dateToZoned, dayOfEvent } from "@shared/time";
@@ -136,7 +136,7 @@ function VenueCard({ hasMaps }: { hasMaps: boolean }) {
     <>
       <div className="home-lab">Where</div>
       <div className="home-venue2">
-        {hasPlace(event) ? <MapPreview venue={event} height={160} className="map" /> : null}
+        {hasPlace(event) ? <MapPreview venue={event} height={84} className="map" /> : null}
         <div className="info">
           {event.venueName ? <b>{event.venueName}</b> : null}
           {lines.map((l, i) => (
@@ -202,12 +202,22 @@ export function HomeScreen() {
   const isBooth = me.staff.kinds.includes("booth") || me.staff.vendorIds.length > 0;
   const seenAt = photosSeenAt(event.id, me.attendee?.id ?? 0);
 
-  const rail: Item[] = [
+  const hasMaps = !!maps.data?.length;
+  // Up to eight round shortcuts in rows of four; everything else goes in the list under More.
+  const shortcuts: Item[] = [
     { label: "My agenda", href: `${base}/my`, icon: <IconBookmark size={24} />, show: !!me.attendee },
     { label: "Speakers", href: `${base}/speakers`, icon: <IconMic size={24} />, show: true },
-    { label: "Sponsors", href: `${base}/exhibitors`, icon: <IconStore size={24} />, show: f.exhibitors },
+    { label: "Sponsors", href: `${base}/exhibitors?tab=sponsors`, icon: <IconStar size={24} />, show: f.exhibitors },
+    { label: "Exhibitors", href: `${base}/exhibitors?tab=exhibitors`, icon: <IconStore size={24} />, show: f.exhibitors },
     { label: "Photos", href: `${base}/photos`, icon: <IconImage size={24} />, show: f.photos, dot: (photosLatest.data ?? 0) > seenAt },
+    { label: "CE credits", href: `${base}/credits`, icon: <IconAward size={24} />, show: !!me.attendee },
+    { label: "Dining", href: `${base}/dining`, icon: <IconFood size={24} />, show: f.dining },
+    { label: "Venue map", href: `${base}/map`, icon: <IconMap size={24} />, show: hasMaps },
+    { label: "Nearby", href: `${base}/nearby`, icon: <IconPin size={24} />, show: true },
+    { label: "About host", href: `${base}/host`, icon: <IconInfo size={24} />, show: true },
   ];
+  const shownRail = shortcuts.filter((r) => r.show).slice(0, 8);
+  const inRail = new Set(shownRail.map((r) => r.label));
   const more: Item[] = [
     { label: "Alerts", href: `${base}/alerts`, icon: <IconBell size={20} />, show: true, badge: me.unread },
     { label: "CE credits", href: `${base}/credits`, icon: <IconAward size={20} />, show: !!me.attendee },
@@ -218,8 +228,7 @@ export function HomeScreen() {
     { label: "Lost and found", href: `${base}/lost-found`, icon: <IconSearch size={20} />, show: true },
     { label: "Speaker page", href: speakerPage.data?.url ?? "", icon: <IconMic size={20} />, show: !!speakerPage.data?.url, external: true },
     { label: "Scan leads", href: `${base}/leads`, icon: <IconQr size={20} />, show: isBooth },
-  ];
-  const shownRail = rail.filter((r) => r.show);
+  ].filter((m) => !inRail.has(m.label));
 
   return (
     <AppScreen nav="home" bodyStyle={{ padding: 0, gap: 0 }}>
@@ -227,7 +236,7 @@ export function HomeScreen() {
       <div className="home-wrap">
         <UpNext />
         {shownRail.length ? (
-          <div className="home-rail" style={{ gridTemplateColumns: `repeat(${Math.max(shownRail.length, 3)}, minmax(0, 1fr))` }}>
+          <div className="home-rail">
             {shownRail.map((r) => (
               <Link key={r.label} href={r.href} aria-label={r.dot ? `${r.label}, new` : undefined}>
                 <span className="ring">
@@ -240,7 +249,7 @@ export function HomeScreen() {
           </div>
         ) : null}
         <PassCard />
-        <VenueCard hasMaps={!!maps.data?.length} />
+        <VenueCard hasMaps={hasMaps} />
         <div className="home-lab">More</div>
         <div className="home-list">
           {more

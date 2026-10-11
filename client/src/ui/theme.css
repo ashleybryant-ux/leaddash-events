@@ -334,8 +334,8 @@ h1, h2, h3 { margin: 0; }
 .home-hero { position: relative; min-height: 250px; background: var(--brand) center / cover no-repeat; color: #FFFFFF; display: flex; flex-direction: column; justify-content: flex-end; }
 .home-hero::before { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, color-mix(in srgb, var(--brand) 20%, transparent) 0%, color-mix(in srgb, var(--brand) 70%, #000000) 100%); }
 .home-hero-in { position: relative; padding: calc(28px + env(safe-area-inset-top)) 18px 18px; display: flex; flex-direction: column; gap: 8px; }
-.home-hero .host { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 700; }
-.home-hero .mark { width: 30px; height: 30px; border-radius: 7px; background: #FFFFFF; color: var(--brand); font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; }
+.home-hero .host { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; font-size: 12.5px; font-weight: 700; }
+.home-hero .mark { width: 88px; height: 88px; border-radius: 18px; background: #FFFFFF; color: var(--brand); font-size: 26px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2); font-weight: 800; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; }
 .home-hero .mark img { width: 86%; height: 86%; object-fit: contain; }
 .home-hero h1 { font-size: 24px; font-weight: 800; line-height: 1.2; margin: 2px 0 0; color: #FFFFFF; }
 .home-hero .when { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; }
@@ -343,7 +343,7 @@ h1, h2, h3 { margin: 0; }
 .home-wrap { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 14px; }
 .home-wrap .home-next { margin: 0; }
 .home-lab { font-size: 12px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 4px 2px -6px; }
-.home-rail { display: grid; gap: 8px; }
+.home-rail { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px 8px; }
 .home-rail a { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--ink); text-decoration: none; text-align: center; }
 .home-rail .ring { position: relative; width: 58px; height: 58px; border-radius: 50%; background: var(--brand-tint); color: var(--brand); display: flex; align-items: center; justify-content: center; }
 .home-rail a:hover .ring { outline: 2px solid var(--highlight, var(--brand)); }
