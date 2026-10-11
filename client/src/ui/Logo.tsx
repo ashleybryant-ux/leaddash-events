@@ -6,9 +6,9 @@ export function LeadDashLogo({ tone = "color", height = 40 }: { tone?: "color" |
 /** The small "Powered by" line on attendee-facing pages. */
 export function PoweredByLogo() {
   return (
-    <div className="row small strong muted" style={{ justifyContent: "center", gap: 8, paddingTop: 6 }}>
-      Powered by
-      <LeadDashLogo height={24} />
+    <div className="col small strong muted" style={{ alignItems: "center", gap: 4, paddingTop: 6 }}>
+      <span>Powered by</span>
+      <LeadDashLogo height={26} />
     </div>
   );
 }

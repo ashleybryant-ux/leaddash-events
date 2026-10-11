@@ -330,6 +330,57 @@ h1, h2, h3 { margin: 0; }
 .rte-tools button[aria-pressed="true"] { background: var(--brand); border-color: var(--brand); color: #FFFFFF; }
 .rte-box { padding: 10px 12px; outline: none; max-height: 520px; overflow-y: auto; }
 
+/* ---------- Attendee app: branded sign-in ---------- */
+.wl { min-height: 100dvh; background: var(--app-bg, #F8FAFB); font-family: var(--app-font, var(--font)); color: var(--ink); display: flex; flex-direction: column; max-width: 480px; margin: 0 auto; }
+.wl-hero { position: relative; background: var(--brand) center / cover no-repeat; color: #FFFFFF; }
+.wl-hero::before { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, color-mix(in srgb, var(--brand) 35%, transparent) 0%, color-mix(in srgb, var(--brand) 78%, #000000) 82%); }
+.wl-hero::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--highlight, var(--accent)); }
+.wl-hero-in { position: relative; padding: calc(34px + env(safe-area-inset-top)) 22px 64px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; }
+.wl-logo { width: 104px; height: 104px; border-radius: 24px; background: #FFFFFF; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28); display: flex; align-items: center; justify-content: center; overflow: hidden; color: var(--brand); font-weight: 800; font-size: 28px; }
+.wl-logo img { width: 84%; height: 84%; object-fit: contain; }
+.wl-host { font-size: 12.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.92; margin-top: 6px; }
+.wl-hero h1 { font-size: 27px; font-weight: 800; line-height: 1.15; margin: 0; color: #FFFFFF; }
+.wl-meta { display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 600; margin-top: 4px; }
+.wl-meta span { display: flex; align-items: center; justify-content: center; gap: 7px; }
+.wl-meta svg { color: var(--highlight, var(--accent)); flex-shrink: 0; }
+.wl-side { display: flex; flex-direction: column; flex: 1; }
+.wl-card { position: relative; margin: -40px 16px 0; background: #FFFFFF; border-radius: 18px; box-shadow: 0 10px 30px rgba(20, 10, 40, 0.14); padding: 20px 18px; border-top: 5px solid var(--brand); }
+.wl-card h2 { font-size: 21px; font-weight: 800; margin: 0; }
+.wl-card p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
+.wl-field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700; color: var(--ink-2); }
+.wl-input { height: 50px; border-radius: 12px; border: 1.5px solid var(--brand); background: #FFFFFF; padding: 0 14px; font-size: 16px; font-family: inherit; color: var(--ink); outline: none; box-shadow: 0 0 0 4px var(--brand-tint); }
+.wl-btn { height: 52px; border-radius: var(--btn-radius, 12px); background: var(--accent); color: var(--accent-ink); border: none; font-weight: 800; font-size: 16px; font-family: inherit; display: flex; align-items: center; justify-content: center; cursor: pointer; text-decoration: none; width: 100%; }
+.wl-btn:disabled { opacity: 0.6; cursor: default; }
+.wl-btn-o { background: #FFFFFF; color: var(--brand); border: 1.5px solid var(--brand); }
+.wl-note { font-size: 12.5px; color: var(--muted); text-align: center; }
+.wl-sent { display: flex; align-items: center; gap: 10px; background: var(--brand-tint); border-radius: 12px; padding: 10px 12px; color: var(--brand); font-weight: 700; font-size: 13.5px; word-break: break-all; }
+.wl-codes { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.wl-codes input { height: 54px; min-width: 0; border-radius: 12px; border: 1.5px solid #C9D5D0; text-align: center; font-size: 22px; font-weight: 800; font-family: inherit; color: var(--ink); outline: none; padding: 0; }
+.wl-codes input:focus { border-color: var(--brand); box-shadow: 0 0 0 4px var(--brand-tint); }
+.wl-links { display: flex; justify-content: center; gap: 8px; font-size: 13px; color: var(--brand); }
+.wl-links button { background: none; border: none; color: var(--brand); font-weight: 700; font-size: 13px; font-family: inherit; cursor: pointer; padding: 4px 0; }
+.wl-feat { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 22px 16px 6px; }
+.wl-feat div { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700; text-align: center; color: var(--ink-2); }
+.wl-feat i { width: 46px; height: 46px; border-radius: 50%; background: var(--brand-tint); color: var(--brand); display: flex; align-items: center; justify-content: center; }
+.wl-lab { font-size: 11.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); text-align: center; padding: 18px 16px 8px; }
+.wl-spons { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; padding: 0 16px; }
+.wl-spons span { width: 100px; height: 42px; border-radius: 8px; background: #FFFFFF; border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; overflow: hidden; font-size: 10.5px; font-weight: 800; color: var(--ink); text-align: center; padding: 4px 6px; box-sizing: border-box; }
+.wl-spons img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.wl-foot { padding: 18px 16px calc(22px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 10px; align-items: center; }
+@media (min-width: 900px) {
+  .wl { max-width: none; display: grid; grid-template-columns: 1.15fr 1fr; min-height: 100dvh; }
+  .wl-hero { min-height: 100dvh; }
+  .wl-hero::after { left: auto; top: 0; width: 5px; height: auto; }
+  .wl-hero-in { position: absolute; inset: 0; padding: 56px; align-items: flex-start; text-align: left; justify-content: flex-end; }
+  .wl-logo { position: absolute; top: 56px; left: 56px; width: 128px; height: 128px; }
+  .wl-hero h1 { font-size: 44px; line-height: 1.1; }
+  .wl-meta { font-size: 16px; }
+  .wl-meta span { justify-content: flex-start; }
+  .wl-side { justify-content: center; padding: 40px 0; max-width: 520px; width: 100%; margin: 0 auto; }
+  .wl-card { margin: 0 24px; }
+  .wl-foot, .wl-feat { padding-left: 24px; padding-right: 24px; }
+}
+
 /* ---------- Attendee app: agenda speaker faces ---------- */
 .agenda-faces { flex-shrink: 0; display: flex; width: 72px; position: relative; }
 .agenda-faces .avatar { border-radius: 14px; border: 2px solid #FFFFFF; box-sizing: content-box; box-shadow: 0 1px 4px rgba(15, 42, 35, 0.12); }

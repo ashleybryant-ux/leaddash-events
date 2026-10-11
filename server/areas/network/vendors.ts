@@ -2,9 +2,9 @@
 import { z } from "zod";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
-import { protectedProcedure, router } from "../../_core/trpc";
+import { protectedProcedure, publicProcedure, router } from "../../_core/trpc";
 import { getDb, schema } from "../../_core/db";
-import { audit, notFound, requireArea } from "../../_core/access";
+import { audit, getEventBySlug, notFound, requireArea } from "../../_core/access";
 import { fileUrl } from "../../_core/files";
 import { emailLayout, escapeHtml, sendEmail } from "../../_core/email";
 import { userForEmail } from "../../core/auth";
@@ -596,6 +596,19 @@ const adminRouter = router({
 });
 
 export const exhibitorsRouter = router({
+  /** Sign-in page (no sign-in needed): up to four sponsor names and logos, the ones picked for the welcome screen first. */
+  welcomeSponsors: publicProcedure.input(z.object({ slug })).query(({ input }) => {
+    const event = getEventBySlug(input.slug);
+    if (event.status === "draft" || !event.features.exhibitors) return [];
+    const packages = new Map(eventPackages(event.id).map((p) => [p.id, p]));
+    const sponsors = directoryOrder(
+      getDb().select().from(schema.vendors).where(and(eq(schema.vendors.eventId, event.id), eq(schema.vendors.visible, true))).all().filter((v) => LISTED.has(v.status) && isSponsor(v)),
+      packages
+    );
+    const welcome = sponsors.filter((v) => (v.packageId ? packages.get(v.packageId)?.logoSpots : null)?.welcome);
+    return (welcome.length ? welcome : sponsors).slice(0, 4).map((v) => ({ id: v.id, company: v.company, logoUrl: fileUrl(v.logoFileId) }));
+  }),
+
   /** Sponsors (by level) and exhibitors attendees can browse. */
   list: protectedProcedure.input(z.object({ slug })).query(({ ctx, input }) => {
     const { event } = attendeeCtx(ctx.user, input.slug);

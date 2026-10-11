@@ -2,14 +2,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, Redirect, useLocation } from "wouter";
 import { trpc } from "../../lib/trpc";
-import { AppScreen, BackBar, BrandHeader, brandStyle, useEventApp } from "../../shells/AttendeeShell";
+import { AppScreen, BackBar, BrandHeader, useEventApp } from "../../shells/AttendeeShell";
 import { Avatar, Empty, ErrorNote, PageLoading, Pill } from "../../ui/components";
 import { IconBell, IconCheck, IconChevron, IconClock, IconPin, IconPlus, IconQr, IconSearch } from "../../ui/icons";
 import { errorText, toast } from "../../ui/toast";
-import { SignIn } from "../../core/SignIn";
+import { BrandSignIn, EventWelcome } from "../../core/EventWelcome";
 import { eachDay, fmtDate, fmtDates, fmtDayDate, fmtRange, fmtTime } from "@shared/format";
 import { dateToZoned } from "@shared/time";
-import { Chip, HeaderStat, PoweredBy, Segmented, SpeakerSheet, TopBar, ceLabel } from "./shared";
+import { Chip, HeaderStat, Segmented, SpeakerSheet, TopBar, ceLabel } from "./shared";
 import { AttendeeSlides } from "./SessionSlides";
 
 /** /e/:slug: the branded welcome and sign-in. Signed-in people go straight to Home. */
@@ -25,28 +25,9 @@ export function WelcomeScreen({ slug }: { slug: string }) {
   if (auth.data) return <Redirect to={`/e/${slug}/home`} />;
   const ev = event.data!;
   return (
-    <div className="app" style={{ ...brandStyle(ev.branding, ev.coverUrl), backgroundColor: "var(--header-bg)", backgroundImage: "var(--header-image)", backgroundSize: "cover", backgroundPosition: "center", color: "var(--header-ink)" }}>
-      <div className="col" style={{ flex: 1, padding: "64px 28px 32px", alignItems: "center", gap: 18, textAlign: "center" }}>
-        <div style={{ width: 112, height: 112, borderRadius: 28, background: "#FFFFFF", border: "1px solid var(--logo-line)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-          {ev.logoUrl ? <img src={ev.logoUrl} alt={`${ev.orgName} logo`} style={{ width: "80%", height: "80%", objectFit: "contain" }} /> : <span style={{ color: "var(--brand)", fontWeight: 800, fontSize: 22 }}>{ev.shortName.slice(0, 4)}</span>}
-        </div>
-        <div className="col" style={{ gap: 6 }}>
-          <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1.2 }}>{ev.name}</div>
-          <div style={{ fontSize: 14, color: "var(--header-sub)" }}>
-            {fmtDates(ev.startDate, ev.endDate)}
-            {ev.venueName ? ` · ${ev.venueName}` : ""}
-          </div>
-        </div>
-      </div>
-      <div style={{ background: "#FFFFFF", color: "var(--ink)", borderRadius: "24px 24px 0 0", padding: "26px 22px calc(20px + env(safe-area-inset-bottom))", display: "flex", flexDirection: "column", gap: 14 }}>
-        <SignIn title="Sign in" eventName={ev.shortName} onDone={() => navigate(`/e/${slug}/home`)} />
-        <div className="muted" style={{ fontSize: 13, textAlign: "center", lineHeight: 1.5 }}>Add this app to your home screen to get session reminders.</div>
-        <div className="small muted" style={{ textAlign: "center" }}>
-          Not registered yet? <a href={`/r/${ev.slug}`}>Register</a>
-        </div>
-        <PoweredBy />
-      </div>
-    </div>
+    <EventWelcome event={ev}>
+      <BrandSignIn eventName={ev.shortName} onDone={() => navigate(`/e/${slug}/home`)} />
+    </EventWelcome>
   );
 }
 

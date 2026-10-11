@@ -10,8 +10,7 @@ import { Link, useLocation } from "wouter";
 import { trpc, type RouterOutputs } from "../lib/trpc";
 import { PageLoading, ErrorNote } from "../ui/components";
 import { IconBack, IconCalendar, IconChat, IconHouse, IconMail, IconPeople } from "../ui/icons";
-import { SignIn } from "../core/SignIn";
-import { fmtDates } from "@shared/format";
+import { BrandSignIn, EventWelcome, NotRegisteredCard } from "../core/EventWelcome";
 import { fontHref, lookOf, themeVars, type BrandLike } from "@shared/brand";
 
 type PublicEvent = RouterOutputs["core"]["events"]["publicBySlug"];
@@ -82,15 +81,9 @@ export function EventApp({ slug, children }: { slug: string; children: ReactNode
 
   if (!auth.data) {
     return (
-      <div className="app" style={brandStyle(ev.branding, ev.coverUrl)}>
-        <EventCoverHeader event={ev} />
-        <div className="app-body">
-          <SignIn title="Sign in to the app" eventName={ev.shortName} />
-          <p className="small muted">
-            Not registered yet? <a href={`/r/${ev.slug}`}>Register for {ev.shortName}</a>
-          </p>
-        </div>
-      </div>
+      <EventWelcome event={ev}>
+        <BrandSignIn eventName={ev.shortName} />
+      </EventWelcome>
     );
   }
   if (me.isLoading) return <PageLoading />;
@@ -99,56 +92,22 @@ export function EventApp({ slug, children }: { slug: string; children: ReactNode
   const isStaff = m.staff.admin || Object.values(m.staff.areas).some((v) => v !== "none") || m.staff.kinds.length > 0;
   if (!m.attendee && !isStaff) {
     return (
-      <div className="app" style={brandStyle(ev.branding, ev.coverUrl)}>
-        <EventCoverHeader event={ev} />
-        <div className="app-body">
-          <h1 className="h2">You are not registered yet</h1>
-          <p className="muted" style={{ margin: 0 }}>
-            We could not find a registration for {auth.data.email}. Register to get your agenda, badge and CE certificates.
-          </p>
-          <a className="btn btn-primary btn-lg btn-block" href={`/r/${ev.slug}`}>Register</a>
-          <SignOutLink />
-        </div>
-      </div>
+      <EventWelcome event={ev} register={false}>
+        <NotRegisteredCard email={auth.data.email} slug={ev.slug} />
+      </EventWelcome>
     );
   }
   if (ev.status === "draft" && !isStaff) {
     return (
-      <div className="app" style={brandStyle(ev.branding, ev.coverUrl)}>
-        <EventCoverHeader event={ev} />
-        <div className="app-body">
-          <h1 className="h2">The app opens soon</h1>
-          <p className="muted" style={{ margin: 0 }}>You are registered. We will let you know by email when the agenda is ready.</p>
+      <EventWelcome event={ev} register={false}>
+        <div className="col" style={{ gap: 10 }}>
+          <h2>The app opens soon</h2>
+          <p>You are registered. We will let you know by email when the agenda is ready.</p>
         </div>
-      </div>
+      </EventWelcome>
     );
   }
   return <EventCtx.Provider value={{ slug, event: ev, me: m, base: `/e/${slug}` }}>{children}</EventCtx.Provider>;
-}
-
-function SignOutLink() {
-  const utils = trpc.useUtils();
-  const signOut = trpc.auth.signOut.useMutation({ onSuccess: () => utils.invalidate() });
-  return (
-    <button className="btn btn-ghost" onClick={() => signOut.mutate()}>
-      Sign in with a different email
-    </button>
-  );
-}
-
-function EventCoverHeader({ event }: { event: PublicEvent }) {
-  return (
-    <div className="app-header">
-      <div className="col gap-4">
-        <div className="eyebrow">{event.orgName}</div>
-        <div className="title">{event.name}</div>
-        <div className="small" style={{ color: "var(--header-sub)" }}>
-          {fmtDates(event.startDate, event.endDate)}
-          {event.venueName ? ` · ${event.venueName}` : ""}
-        </div>
-      </div>
-    </div>
-  );
 }
 
 /** The tab to light up. "my" (My agenda) lights Agenda; "more" (pages opened from Home) lights Home. */
