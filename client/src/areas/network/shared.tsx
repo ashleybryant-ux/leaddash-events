@@ -53,7 +53,7 @@ export function BackHeader({ title, sub, back, right, children }: { title: React
   return (
     <header className="app-bar" style={{ flexDirection: "column", alignItems: "stretch", gap: 10 }}>
       <div className="row gap-8">
-        <button className="icon-btn" aria-label="Back" onClick={() => (back ? navigate(back) : window.history.length > 1 ? window.history.back() : navigate(`${base}/more`))}>
+        <button className="icon-btn" aria-label="Back" onClick={() => (back ? navigate(back) : window.history.length > 1 ? window.history.back() : navigate(`${base}/home`))}>
           <IconBack />
         </button>
         <div className="grow col" style={{ gap: 0 }}>

@@ -376,6 +376,8 @@ export const sessionsRouter = router({
           endTime: s.endTime,
           room: s.room,
           ceHours: s.ceHours,
+          startsAt,
+          endsAt,
           remind: item.remind,
           status: certified.has(s.id) ? ("certified" as const) : isIn ? ("attended" as const) : now > endsAt ? ("missed" as const) : ("upcoming" as const),
           canCheckIn: !isIn && now >= startsAt - 30 * 60_000 && now <= endsAt,

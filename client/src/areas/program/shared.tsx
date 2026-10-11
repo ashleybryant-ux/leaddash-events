@@ -35,7 +35,7 @@ export function TopBar({ title, back, children }: { title: string; back?: string
   return (
     <header className="app-bar" style={{ flexDirection: "column", alignItems: "stretch", gap: 10, paddingBottom: children ? 14 : 12 }}>
       <div className="row" style={{ gap: 8 }}>
-        <Link href={back ?? `${base}/more`} className="icon-btn" aria-label="Back" style={{ color: "var(--ink)" }}>
+        <Link href={back ?? `${base}/home`} className="icon-btn" aria-label="Back" style={{ color: "var(--ink)" }}>
           <IconBack />
         </Link>
         <div className="grow clip" style={{ fontSize: 18, fontWeight: 800 }}>{title}</div>

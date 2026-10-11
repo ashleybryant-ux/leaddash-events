@@ -87,7 +87,7 @@ type BrandingExtra = EventBranding & { iconFileId?: number | null; badge?: Badge
 const DEFAULT_BANDS: BandColors = { attendee: "#1F5F4A", speaker: "#e88a3a", vendor: "#2F5D8A", staff: "#0F2A23" };
 const DEFAULT_BADGE: BadgeLayout = { showCredentials: true, showOrg: false, showCity: true, ribbonByTicket: true, size: "4x3", nameStyle: "first", showQr: true, bandColors: DEFAULT_BANDS };
 
-const FEATURE_KEYS = ["networking", "community", "messaging", "meetings", "polls", "exhibitors", "dining"] as const;
+const FEATURE_KEYS = ["networking", "community", "messaging", "meetings", "polls", "exhibitors", "dining", "photos"] as const;
 
 export const diningRouter = router({
   adminList: protectedProcedure.input(z.object({ eventId: z.number() })).query(({ ctx, input }) => {

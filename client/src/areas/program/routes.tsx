@@ -4,11 +4,13 @@ import { AgendaScreen, MyAgendaScreen, SessionScreen, SpeakersScreen, WelcomeScr
 import { AlertsScreen, DiningScreen, HelpScreen, HostScreen, LostFoundScreen, MoreScreen, NearbyScreen } from "./info";
 import { AdminSessionEditScreen, AdminSessionsScreen, AdminSpeakerEditScreen, AdminSpeakersScreen } from "./adminProgram";
 import { SpeakerPageScreen } from "./speakerPage";
+import { HomeScreen } from "./home";
 import { AdminAnnounceScreen, AdminBrandingScreen, AdminDiningScreen, AdminHelpScreen, AdminHostScreen } from "./adminInfo";
 
 export const routes: AppRoute[] = [
   // The welcome screen does its own sign-in, so it has no gate.
   { path: "/e/:slug", shell: "public", render: (p) => <WelcomeScreen slug={p.slug} /> },
+  { path: "/e/:slug/home", shell: "event", render: () => <HomeScreen /> },
   { path: "/e/:slug/agenda", shell: "event", render: () => <AgendaScreen /> },
   { path: "/e/:slug/my", shell: "event", render: () => <MyAgendaScreen /> },
   { path: "/e/:slug/session/:sessionId", shell: "event", render: (p) => <SessionScreen sessionId={Number(p.sessionId)} /> },

@@ -64,7 +64,7 @@ export function ExhibitorsScreen() {
   return (
     <AppScreen
       header={
-        <BackHeader title="Exhibitors and sponsors" back={`${base}/more`}>
+        <BackHeader title="Exhibitors and sponsors" back={`${base}/home`}>
           <LightTabs
             label="Show"
             value={tab}
@@ -152,7 +152,7 @@ export function ExhibitorsScreen() {
  * A sponsor or exhibitor popping out as a lightbox over the list (no navigation):
  * the logo large at the top, then the level, booth, offer, about, and Message, Find booth and website buttons.
  */
-function VendorLightbox({ vendorId, onClose }: { vendorId: number | null; onClose: () => void }) {
+export function VendorLightbox({ vendorId, onClose }: { vendorId: number | null; onClose: () => void }) {
   const { slug, base, event } = useEventApp();
   const v = trpc.network.exhibitors.get.useQuery({ slug, vendorId: vendorId ?? 0 }, { enabled: !!vendorId });
   const msg = useMessageVendor();
@@ -295,7 +295,7 @@ export function FloorMapScreen() {
   return (
     <AppScreen
       header={
-        <BackHeader title="Venue map" back={`${base}/more`}>
+        <BackHeader title="Venue map" back={`${base}/home`}>
           {all.length > 1 ? <LightTabs label="Level" value={current?.id ?? 0} onChange={(id) => setMapId(id)} tabs={all.map((m) => ({ key: m.id, label: m.name }))} /> : null}
         </BackHeader>
       }
@@ -465,7 +465,7 @@ export function LeadScanScreen() {
     <AppScreen
       header={
         <BackBar
-          back={`${base}/more`}
+          back={`${base}/home`}
           title={
             <span className="col" style={{ gap: 0 }}>
               <span style={{ fontSize: 16, fontWeight: 800 }}>Scan leads</span>

@@ -121,6 +121,7 @@ export function eventGroups(eventId: number): NavGroup[] {
     { key: "app", label: "In the app", icon: <IconPhone />, items: [
       { label: "Announcements", href: `${b}/announcements`, area: "announcements" },
       { label: "Community", href: `${b}/community`, area: "community", feature: "community" },
+      { label: "Photos", href: `${b}/photos`, area: "community", feature: "photos" },
       { label: "Help", href: `${b}/help`, area: "help" },
       { label: "Dining", href: `${b}/dining`, adminOnly: true, feature: "dining" },
       { label: "About host", href: `${b}/host`, adminOnly: true },

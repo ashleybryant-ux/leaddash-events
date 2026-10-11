@@ -13,6 +13,7 @@ import { packagesRouter } from "./packages";
 import { leadsRouter, mapsRouter } from "./leads";
 import { pollsRouter } from "./polls";
 import { cfpSettingsFor, proposalsRouter } from "./proposals";
+import { photosRouter, registerPhotosHttp, seedPhotos } from "./photos";
 
 export const networkRouter = router({
   /** Unread direct messages for the bottom nav badge (0 when the person is not an attendee). */
@@ -28,6 +29,7 @@ export const networkRouter = router({
   maps: mapsRouter,
   polls: pollsRouter,
   proposals: proposalsRouter,
+  photos: photosRouter,
 });
 
 export const networkArea: AreaModule<typeof networkRouter> = {
@@ -35,5 +37,7 @@ export const networkArea: AreaModule<typeof networkRouter> = {
   seedEvent: (eventId) => {
     seedCommunity(eventId);
     cfpSettingsFor(eventId);
+    seedPhotos(eventId);
   },
+  registerHttp: registerPhotosHttp,
 };

@@ -65,7 +65,7 @@ async function startServer() {
     res.json({
       name: ev.branding.appName || ev.name,
       short_name: (ev.shortName || ev.name).slice(0, 24),
-      start_url: `/e/${ev.slug}/agenda`,
+      start_url: `/e/${ev.slug}/home`,
       scope: `/e/${ev.slug}/`,
       display: "standalone",
       background_color: "#F8FAFB",

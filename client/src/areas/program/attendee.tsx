@@ -12,7 +12,7 @@ import { dateToZoned } from "@shared/time";
 import { Chip, HeaderStat, PoweredBy, Segmented, SpeakerSheet, TopBar, ceLabel } from "./shared";
 import { AttendeeSlides } from "./SessionSlides";
 
-/** /e/:slug: the branded welcome and sign-in. Signed-in people go straight to the agenda. */
+/** /e/:slug: the branded welcome and sign-in. Signed-in people go straight to Home. */
 export function WelcomeScreen({ slug }: { slug: string }) {
   const event = trpc.core.events.publicBySlug.useQuery({ slug });
   const auth = trpc.auth.me.useQuery();
@@ -22,7 +22,7 @@ export function WelcomeScreen({ slug }: { slug: string }) {
   }, [event.data]);
   if (event.isLoading || auth.isLoading) return <PageLoading />;
   if (event.error) return <div className="app"><ErrorNote error={event.error} /></div>;
-  if (auth.data) return <Redirect to={`/e/${slug}/agenda`} />;
+  if (auth.data) return <Redirect to={`/e/${slug}/home`} />;
   const ev = event.data!;
   return (
     <div className="app" style={{ ...brandStyle(ev.branding, ev.coverUrl), backgroundColor: "var(--header-bg)", backgroundImage: "var(--header-image)", backgroundSize: "cover", backgroundPosition: "center", color: "var(--header-ink)" }}>
@@ -39,7 +39,7 @@ export function WelcomeScreen({ slug }: { slug: string }) {
         </div>
       </div>
       <div style={{ background: "#FFFFFF", color: "var(--ink)", borderRadius: "24px 24px 0 0", padding: "26px 22px calc(20px + env(safe-area-inset-bottom))", display: "flex", flexDirection: "column", gap: 14 }}>
-        <SignIn title="Sign in" eventName={ev.shortName} onDone={() => navigate(`/e/${slug}/agenda`)} />
+        <SignIn title="Sign in" eventName={ev.shortName} onDone={() => navigate(`/e/${slug}/home`)} />
         <div className="muted" style={{ fontSize: 13, textAlign: "center", lineHeight: 1.5 }}>Add this app to your home screen to get session reminders.</div>
         <div className="small muted" style={{ textAlign: "center" }}>
           Not registered yet? <a href={`/r/${ev.slug}`}>Register</a>

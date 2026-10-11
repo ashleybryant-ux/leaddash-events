@@ -1233,6 +1233,7 @@ const FEATURE_LABELS: { key: keyof Features; label: string }[] = [
   { key: "polls", label: "Live polls and Q&A" },
   { key: "exhibitors", label: "Exhibitors and sponsors" },
   { key: "dining", label: "Food and dining" },
+  { key: "photos", label: "Photos" },
 ];
 
 const BAND_LABELS: { key: keyof Bands; label: string }[] = [

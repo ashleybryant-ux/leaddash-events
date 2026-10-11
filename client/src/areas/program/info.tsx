@@ -6,7 +6,7 @@ import { AppScreen, BrandHeader, useEventApp } from "../../shells/AttendeeShell"
 import { Empty, ErrorNote, Field, PageLoading, Pill, Sheet, CloseButton } from "../../ui/components";
 import { PushToggle } from "../../ui/PushToggle";
 import {
-  IconAward, IconBadge, IconBell, IconChevron, IconClock, IconFood, IconHelp, IconInfo, IconMap, IconMessage, IconPeople, IconPin, IconQr, IconSearch, IconStore, IconUser, IconFolder,
+  IconAward, IconBadge, IconBell, IconChevron, IconClock, IconFood, IconHelp, IconImage, IconInfo, IconMap, IconMessage, IconPeople, IconPin, IconQr, IconSearch, IconStore, IconUser, IconFolder,
 } from "../../ui/icons";
 import { errorText, toast } from "../../ui/toast";
 import { eachDay, fmtDayDate, fmtRange, fmtTime, fmtWhen } from "@shared/format";
@@ -85,6 +85,7 @@ export function AlertsScreen() {
           ))}
         </div>
       ) : null}
+      <PushToggle />
       {list.isLoading ? <PageLoading /> : list.error ? <ErrorNote error={list.error} /> : !groups.length ? <Empty>No alerts yet.</Empty> : null}
       {groups.map((g) => (
         <div key={g.label} className="col gap-10">
@@ -152,6 +153,7 @@ export function MoreScreen() {
     { href: `${base}/speakers`, icon: <IconUser size={20} />, label: "Speakers", show: true },
     { href: speakerPage.data?.url ?? "/speak", icon: <IconUser size={20} />, label: "Your speaker page", sub: "Slides, bio and agreement", show: !!speakerPage.data?.url },
     { href: `${base}/exhibitors`, icon: <IconStore size={20} />, label: "Exhibitors and sponsors", show: f.exhibitors },
+    { href: `${base}/photos`, icon: <IconImage size={20} />, label: "Photos", show: f.photos },
     { href: `${base}/map`, icon: <IconMap size={20} />, label: "Venue map", show: true },
     { href: `${base}/dining`, icon: <IconFood size={20} />, label: "Food and dining", show: f.dining },
     { href: `${base}/help`, icon: <IconHelp size={20} />, label: "Help center", show: true },

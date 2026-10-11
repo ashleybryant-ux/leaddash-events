@@ -359,3 +359,48 @@ export const reviewAssignments = sqliteTable(
   },
   (t) => [uniqueIndex("review_assignments_unique").on(t.proposalId, t.reviewerUserId)]
 );
+
+/** Event photos attendees and staff post in the app. Files are private and shown through signed links. */
+export const eventPhotos = sqliteTable(
+  "event_photos",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    eventId: integer("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
+    /** The attendee who posted it, or null when event staff posted it. */
+    attendeeId: integer("attendee_id").references(() => attendees.id, { onDelete: "cascade" }),
+    uploadedByUserId: integer("uploaded_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    fileId: integer("file_id").notNull().references(() => files.id, { onDelete: "cascade" }),
+    /** A small copy for the grid (about 480px). */
+    thumbFileId: integer("thumb_file_id").references(() => files.id, { onDelete: "set null" }),
+    caption: text("caption").notNull().default(""),
+    sessionId: integer("session_id").references(() => sessions.id, { onDelete: "set null" }),
+    status: text("status", { enum: ["pending", "posted", "hidden"] }).notNull().default("pending"),
+    likes: integer("likes").notNull().default(0),
+    /** Someone reported it; it went back to review. */
+    reported: integer("reported", { mode: "boolean" }).notNull().default(false),
+    reviewedBy: integer("reviewed_by").references(() => users.id, { onDelete: "set null" }),
+    reviewedAt: integer("reviewed_at", { mode: "timestamp_ms" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("event_photos_event").on(t.eventId, t.status)]
+);
+
+export const photoLikes = sqliteTable(
+  "photo_likes",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    photoId: integer("photo_id").notNull().references(() => eventPhotos.id, { onDelete: "cascade" }),
+    /** Likes are per signed-in person, so event staff can like too. */
+    userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  },
+  (t) => [uniqueIndex("photo_likes_unique").on(t.photoId, t.userId)]
+);
+
+/** Photo rules for an event. Photos in the app on or off is the event's "photos" feature. */
+export const photoSettings = sqliteTable("photo_settings", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  eventId: integer("event_id").notNull().unique().references(() => events.id, { onDelete: "cascade" }),
+  /** True: the event team reviews new photos before everyone sees them. */
+  review: integer("review", { mode: "boolean" }).notNull().default(true),
+  who: text("who", { enum: ["everyone", "attendees", "staff"] }).notNull().default("everyone"),
+});

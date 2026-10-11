@@ -1,6 +1,6 @@
 /**
  * The attendee app frame: event branding, the sign-in gate, the brand header
- * or back bar, and the bottom nav (Agenda, My agenda, Community, Messages, More).
+ * or back bar, and the bottom nav (Home, Agenda, People, Community, Messages).
  *
  * Screens are rendered inside <EventApp slug> (set up by the router) and use
  * useEventApp() for the event, the signed-in person and their attendee row.
@@ -9,9 +9,9 @@ import { createContext, useContext, useEffect, type CSSProperties, type ReactNod
 import { Link, useLocation } from "wouter";
 import { trpc, type RouterOutputs } from "../lib/trpc";
 import { PageLoading, ErrorNote } from "../ui/components";
-import { IconBack, IconBookmark, IconCalendar, IconCommunity, IconGrid, IconMessage } from "../ui/icons";
+import { IconBack, IconCalendar, IconChat, IconHouse, IconMail, IconPeople } from "../ui/icons";
 import { SignIn } from "../core/SignIn";
-import { fmtDates } from "@shared/format";
+import { fmtDates, initials } from "@shared/format";
 import { fontHref, lookOf, themeVars, type BrandLike } from "@shared/brand";
 
 type PublicEvent = RouterOutputs["core"]["events"]["publicBySlug"];
@@ -151,7 +151,8 @@ function EventCoverHeader({ event }: { event: PublicEvent }) {
   );
 }
 
-export type NavKey = "agenda" | "my" | "community" | "messages" | "more" | null;
+/** The tab to light up. "my" (My agenda) lights Agenda; "more" (pages opened from Home) lights Home. */
+export type NavKey = "home" | "agenda" | "my" | "people" | "community" | "messages" | "more" | null;
 
 /** Green header with the event's short name above the screen title. */
 export function BrandHeader({ title, children, eyebrow }: { title: ReactNode; children?: ReactNode; eyebrow?: string }) {
@@ -173,7 +174,7 @@ export function BackBar({ title, back, right }: { title: ReactNode; back?: strin
   const [, navigate] = useLocation();
   return (
     <header className="app-bar">
-      <button className="icon-btn" aria-label="Back" onClick={() => (back ? navigate(back) : window.history.length > 1 ? window.history.back() : navigate(`${base}/agenda`))}>
+      <button className="icon-btn" aria-label="Back" onClick={() => (back ? navigate(back) : window.history.length > 1 ? window.history.back() : navigate(`${base}/home`))}>
         <IconBack />
       </button>
       <div className="title grow clip">{title}</div>
@@ -200,23 +201,40 @@ export function BottomNav({ active }: { active: NavKey }) {
   const { base, event, slug } = useEventApp();
   const unread = trpc.network.unreadMessages.useQuery({ slug }, { refetchInterval: 30_000, enabled: event.features.messaging });
   const count = unread.data ?? 0;
+  const lit = active === "my" ? "agenda" : active === "more" ? "home" : active;
   const items: { key: Exclude<NavKey, null>; label: string; href: string; icon: ReactNode; show?: boolean }[] = [
+    { key: "home", label: "Home", href: `${base}/home`, icon: <IconHouse /> },
     { key: "agenda", label: "Agenda", href: `${base}/agenda`, icon: <IconCalendar /> },
-    { key: "my", label: "My agenda", href: `${base}/my`, icon: <IconBookmark /> },
-    { key: "community", label: "Community", href: `${base}/community`, icon: <IconCommunity />, show: event.features.community },
-    { key: "messages", label: "Messages", href: `${base}/messages`, icon: <IconMessage />, show: event.features.messaging },
-    { key: "more", label: "More", href: `${base}/more`, icon: <IconGrid /> },
+    { key: "people", label: "People", href: `${base}/people`, icon: <IconPeople />, show: event.features.networking },
+    { key: "community", label: "Community", href: `${base}/community`, icon: <IconChat />, show: event.features.community },
+    { key: "messages", label: "Messages", href: `${base}/messages`, icon: <IconMail />, show: event.features.messaging },
   ];
   const shown = items.filter((i) => i.show !== false);
   return (
     <nav aria-label="Main" className="bottom-nav" style={{ gridTemplateColumns: `repeat(${shown.length}, minmax(0, 1fr))` }}>
       {shown.map((i) => (
-        <Link key={i.key} href={i.href} aria-current={active === i.key ? "page" : undefined}>
+        <Link key={i.key} href={i.href} aria-current={lit === i.key ? "page" : undefined}>
           {i.icon}
           {i.label}
           {i.key === "messages" && count > 0 ? <span className="badge-count">{count > 99 ? "99+" : count}</span> : null}
         </Link>
       ))}
     </nav>
+  );
+}
+
+/** Round chip with the person's photo or initials, linking to their profile (Home and Agenda top bars). */
+export function ProfileChip() {
+  const { base, me } = useEventApp();
+  const auth = trpc.auth.me.useQuery();
+  const a = me.attendee;
+  const name = a ? `${a.firstName} ${a.lastName}` : auth.data?.name || auth.data?.email || "";
+  const parts = name.split(/\s+/).filter(Boolean);
+  const text = a ? initials(a.firstName, a.lastName) : initials(parts[0] ?? "", parts.length > 1 ? parts[parts.length - 1] : "");
+  return (
+    <Link href={`${base}/profile`} className="profile-chip" aria-label="My profile">
+      <span className="profile-chip-face">{a?.photoUrl ? <img src={a.photoUrl} alt="" /> : text}</span>
+      <span aria-hidden="true" className="profile-chip-arrow">›</span>
+    </Link>
   );
 }

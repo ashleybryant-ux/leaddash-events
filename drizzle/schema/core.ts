@@ -115,7 +115,7 @@ export const events = sqliteTable(
     hostJoinUrl: text("host_join_url").notNull().default(""),
     /** Features attendees see in the app. */
     features: text("features", { mode: "json" })
-      .$type<{ networking: boolean; community: boolean; messaging: boolean; meetings: boolean; polls: boolean; exhibitors: boolean; dining: boolean }>()
+      .$type<{ networking: boolean; community: boolean; messaging: boolean; meetings: boolean; polls: boolean; exhibitors: boolean; dining: boolean; photos: boolean }>()
       .notNull()
       .default(sql`'{"networking":true,"community":true,"messaging":true,"meetings":true,"polls":true,"exhibitors":true,"dining":true}'`),
     createdAt: createdAt(),

@@ -46,3 +46,9 @@ export const IconChart = ({ size, ...p }: P) => (<svg {...base(size)} {...p}><pa
 export const IconStar = ({ size, ...p }: P) => (<svg {...base(size)} {...p}><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z" /></svg>);
 export const IconTools = ({ size, ...p }: P) => (<svg {...base(size)} {...p}><path d="M14.7 6.3a4 4 0 00-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 005.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z" /></svg>);
 export const IconSignOut = ({ size, ...p }: P) => (<svg {...base(size)} {...p}><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10" /></svg>);
+export const IconHouse = ({ size, ...p }: P) => (<svg {...base(size)} {...p}><path d="M3 11l9-7 9 7" /><path d="M5 10v10h14V10" /></svg>);
+export const IconChat = ({ size, ...p }: P) => (<svg {...base(size)} {...p}><path d="M4 5h16v11H8l-4 4z" /></svg>);
+export const IconMail = ({ size, ...p }: P) => (<svg {...base(size)} {...p}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 7l9 6 9-6" /></svg>);
+export const IconMic = ({ size, ...p }: P) => (<svg {...base(size)} {...p}><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0014 0M12 18v3" /></svg>);
+export const IconImage = ({ size, ...p }: P) => (<svg {...base(size)} {...p}><rect x="3" y="5" width="18" height="15" rx="2" /><circle cx="9" cy="11" r="2" /><path d="M21 17l-5-5-9 8" /></svg>);
+export const IconHeart = ({ size = 16, filled, ...p }: P & { filled?: boolean }) => (<svg {...base(size)} fill={filled ? "currentColor" : "none"} {...p}><path d="M12 20s-7-4.4-7-10a4 4 0 017-2.6A4 4 0 0119 10c0 5.6-7 10-7 10z" /></svg>);

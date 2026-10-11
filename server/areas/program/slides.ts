@@ -503,9 +503,9 @@ function dosTime(d: Date) {
   };
 }
 
-const safePart = (s: string) => s.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) || "file";
+export const safePart = (s: string) => s.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) || "file";
 
-async function writeZip(res: Response, entries: { name: string; path: string; at: Date }[]) {
+export async function writeZip(res: Response, entries: { name: string; path: string; at: Date }[]) {
   let offset = 0;
   const central: Buffer[] = [];
   const write = (buf: Buffer) =>
