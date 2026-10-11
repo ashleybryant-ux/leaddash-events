@@ -249,6 +249,24 @@ describe("sponsor and exhibitor welcome", () => {
     expect(welcome2[0].attachments).toBeUndefined();
   });
 
+  it("keeps the welcome buttons when Reply-to is empty: host page email, then the organization owner", async () => {
+    const s = await setupEvent({ orgName: "Sample Organization" });
+    const pkg = getDb().insert(schema.vendorPackages).values({ eventId: s.event.id, kind: "sponsor", name: "Gold", priceCents: 500000, passes: 2 }).returning().get();
+    addVendor(s, { packageId: pkg.id });
+    const { welcome } = await s.admin.registration.welcomes.get({ eventId: s.event.id, group: "sponsors" });
+    const draft = { ...draftOf(welcome), replyTo: "" };
+    const p = await s.admin.registration.welcomes.preview({ eventId: s.event.id, ...draft });
+    expect(p.html).toContain("Add pass names");
+    expect(p.html).toContain("Edit app listing");
+    expect(p.html).toContain("mailto:owner@example.org");
+    getDb().update(schema.events).set({ hostLinks: [{ label: "Email us", url: "mailto:hello@example.org" }] }).where(eq(schema.events.id, s.event.id)).run();
+    const p2 = await s.admin.registration.welcomes.preview({ eventId: s.event.id, ...draft });
+    expect(p2.html).toContain("mailto:hello@example.org");
+    const ex = await s.admin.registration.welcomes.get({ eventId: s.event.id, group: "exhibitors" });
+    const p3 = await s.admin.registration.welcomes.preview({ eventId: s.event.id, ...draftOf(ex.welcome), replyTo: "" });
+    expect(p3.html).toContain("Add booth staff");
+  });
+
   it("sends the welcome when staff record the payment it was waiting for", async () => {
     const s = await setupEvent({ orgName: "Sample Organization" });
     await s.admin.registration.welcomes.get({ eventId: s.event.id, group: "sponsors" });

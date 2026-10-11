@@ -134,6 +134,7 @@ async function emailCertificate(c: Cert) {
       brand: ev.branding.colorPrimary,
       accent: ev.branding.colorAccent,
       look: ev.branding,
+      eventName: ev.name,
       title: "Your CE certificate",
       blocks: [`<p>Your certificate for <b>${escapeHtml(c.title)}</b> (${escapeHtml(fmtHours(c.hours))}) is ready.</p>`, emailButton("View certificate", v.verifyUrl, ev.branding)],
     }),

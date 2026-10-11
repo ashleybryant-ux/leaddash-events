@@ -24,7 +24,7 @@ const SPONSOR: [string, string][] = [
 const EXHIBITOR: [string, string][] = [
   ["h", "Exhibitor Agreement"],
   ["p", "This agreement is between {Organization name} and {Company name} (the Exhibitor) for {Event name}, {Event dates}, at {Venue}."],
-  ["p", "<b>1. Booth.</b> The Exhibitor is buying a {Package name} for {Package price}, plus these add-ons: {Add-ons}. Booth spots are assigned by {Organization name}."],
+  ["p", "<b>1. Booth.</b> The Exhibitor is buying the {Package name} for {Package price}, plus these add-ons: {Add-ons}. Booth spots are assigned by {Organization name}."],
   ["p", "<b>2. Payment.</b> {Payment terms}."],
   ["p", "<b>3. Setup and teardown.</b> Booths are set up {Setup time} and taken down {Teardown time}. The booth stays staffed during exhibit hours."],
   ["p", "<b>4. Booth rules.</b> The Exhibitor may not share or sublet the booth, and keeps displays inside the booth space."],

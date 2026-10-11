@@ -205,6 +205,11 @@ export const vendors = sqliteTable(
     payMethodLabel: text("pay_method_label").notNull().default(""),
     /** Invoice choice on the checkout page: the package is held until this date. */
     holdUntil: text("hold_until"),
+    /** When the organization was told the invoice hold ended with nothing paid (sent once). */
+    holdNoticeAt: integer("hold_notice_at", { mode: "timestamp_ms" }),
+    /** The open pay link Checkout Session, so the scheduled charge waits instead of collecting the same balance. */
+    paySessionId: text("pay_session_id"),
+    paySessionExpiresAt: integer("pay_session_expires_at", { mode: "timestamp_ms" }),
     /** Secret in the vendor's pay link (/r/:slug/sponsor/pay?v=): pay what is owed or change the saved payment method. */
     payToken: text("pay_token").unique(),
     createdAt: createdAt(),

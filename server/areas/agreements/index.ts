@@ -15,7 +15,7 @@ import { protectedProcedure, publicProcedure, router } from "../../_core/trpc";
 import { getDb, schema } from "../../_core/db";
 import { audit, eventAccess, forbidden, notFound, requireArea } from "../../_core/access";
 import { cleanRichText, richTextToPlain } from "../../_core/richtext";
-import { fileUrl } from "../../_core/files";
+import { fileUrl, saveFile } from "../../_core/files";
 import { fmtWhen } from "@shared/format";
 import type { User } from "../../../drizzle/schema";
 import { sendSpeakerWelcome } from "../registration/recipientMessages";
@@ -24,19 +24,23 @@ import { DATE_VALUES, FIELDS, ORG_VALUES, SAMPLE, STARTERS, usedOn, type Agreeme
 import { eventValues, fillAgreement, templateValues } from "./fill";
 import {
   agreementForSpeaker,
+  agreementsForVendor,
+  chosenTemplateForVendor,
   copyLink,
   nextReminderAt,
   resendAgreement,
+  resendSignedCopy,
   runAgreementReminders,
   sendSpeakerAgreement,
   sendVendorAgreement,
+  setVendorTemplate,
   signAgreement,
   signLink,
   speakerSessionCard,
   templateFor,
 } from "./sign";
 import { agreementPdf } from "./pdf";
-import { signedCopy } from "./signed";
+import { COUNTERSIGN_FILE, COUNTERSIGN_NAME, countersignFileId, signedCopy } from "./signed";
 
 export * from "./sign";
 export { fillAgreement, valuesForVendor, valuesForCheckout, valuesForSpeaker, valuesFor, paymentTerms } from "./fill";
@@ -76,6 +80,8 @@ const templateInput = z.object({
   signerName: z.string().trim().max(120).default(""),
   signerTitle: z.string().trim().max(120).default(""),
   countersign: z.boolean().default(true),
+  /** The organization signer's name drawn in the signature font (PNG data URL), sent when the name changes. */
+  countersignPng: z.string().max(400_000).optional(),
 });
 
 /** Reminder choice from the stored numbers. */
@@ -157,6 +163,16 @@ const templatesRouter = router({
     for (const k of DATE_VALUES) if (values[k] && !/^\d{4}-\d{2}-\d{2}$/.test(values[k])) throw bad(`Use a date for ${k}.`);
     const [reminderDays, reminderMax] = REMINDERS[input.reminders];
     if (input.countersign && !input.signerName) throw bad("Add the organization signer, or turn off Countersign automatically.");
+    // The organization signer's drawn signature: a new one for a new name, kept while the name is the same.
+    const sigM = input.countersignPng ? /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(input.countersignPng.trim()) : null;
+    if (sigM && input.signerName) {
+      const png = Buffer.from(sigM[1], "base64");
+      if (png.length < 60 || png.subarray(1, 4).toString("ascii") !== "PNG") throw bad("The signature did not come through. Try again.");
+      const file = saveFile({ orgId: event.orgId, name: "countersignature.png", mime: "image/png", base64: sigM[1], isPublic: false, userId: ctx.user.id });
+      Object.assign(values, { [COUNTERSIGN_FILE]: String(file.id), [COUNTERSIGN_NAME]: input.signerName });
+    } else if (countersignFileId(t, input.signerName)) {
+      Object.assign(values, { [COUNTERSIGN_FILE]: t.values[COUNTERSIGN_FILE], [COUNTERSIGN_NAME]: t.values[COUNTERSIGN_NAME] });
+    }
     getDb()
       .update(schema.agreementTemplates)
       .set({
@@ -354,11 +370,44 @@ export const agreementsRouter = router({
     return { id: a.id, signLink: signLink(a.code) };
   }),
 
-  /** Emails the sign link again (refreshing the text from the template while it is unsigned). */
+  /** Emails a sponsor or exhibitor their signed agreement again. */
+  resendVendorCopy: protectedProcedure.input(z.object({ eventId: id, vendorId: id })).mutation(async ({ ctx, input }) => {
+    const { event } = requireArea(ctx.user, input.eventId, "vendors", "edit");
+    const v = getDb().select().from(schema.vendors).where(eq(schema.vendors.id, input.vendorId)).get();
+    if (!v || v.eventId !== event.id) throw notFound("That sponsor");
+    const a = agreementsForVendor(v.id).find((x) => x.status === "signed");
+    if (!a) throw bad("This agreement is not signed yet.");
+    await resendSignedCopy(a.id);
+    audit(ctx.user, { orgId: event.orgId, eventId: event.id, action: "agreement.resend", detail: v.company });
+    return { ok: true, to: a.signerEmail };
+  }),
+
+  /** The agreement template a sponsor or exhibitor uses (picked in their details), and whether it is signed. */
+  vendorTemplate: protectedProcedure.input(z.object({ eventId: id, vendorId: id })).query(({ ctx, input }) => {
+    const { event } = requireArea(ctx.user, input.eventId, "vendors");
+    const v = getDb().select().from(schema.vendors).where(eq(schema.vendors.id, input.vendorId)).get();
+    if (!v || v.eventId !== event.id) throw notFound("That sponsor");
+    const signed = agreementsForVendor(v.id).some((a) => a.status === "signed");
+    return { templateId: chosenTemplateForVendor(v)?.id ?? null, signed };
+  }),
+
+  /** Picks the agreement template for a sponsor or exhibitor. Send agreement uses it. Nothing is emailed. */
+  setVendorTemplate: protectedProcedure.input(z.object({ eventId: id, vendorId: id, templateId: id })).mutation(({ ctx, input }) => {
+    const { event } = requireArea(ctx.user, input.eventId, "vendors", "edit");
+    const v = getDb().select().from(schema.vendors).where(eq(schema.vendors.id, input.vendorId)).get();
+    if (!v || v.eventId !== event.id) throw notFound("That sponsor");
+    getTemplate(event.id, input.templateId);
+    setVendorTemplate(v.id, input.templateId);
+    return { ok: true };
+  }),
+
+  /** Emails the sign link again (refreshing the text from the template while it is unsigned), or the signed copy once signed. */
   resend: protectedProcedure.input(z.object({ eventId: id, agreementId: id })).mutation(async ({ ctx, input }) => {
     const a = agreementIn(input.eventId, input.agreementId);
     const { event } = requireArea(ctx.user, input.eventId, areaOf(a.kind), "edit");
-    await resendAgreement(a.id);
+    // A signed agreement: the signer gets their signed copy again.
+    if (a.status === "signed") await resendSignedCopy(a.id);
+    else await resendAgreement(a.id);
     audit(ctx.user, { orgId: event.orgId, eventId: event.id, action: "agreement.resend", detail: a.title });
     return { ok: true };
   }),

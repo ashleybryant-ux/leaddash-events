@@ -4,19 +4,8 @@ import { IconClose } from "../../ui/icons";
 import { errorText, toast } from "../../ui/toast";
 import "./sponsors.css";
 
-/** The thin number strip above the folder tabs. */
-export function NumStrip({ items }: { items: { label: string; value: ReactNode; warn?: boolean }[] }) {
-  return (
-    <div className="num-strip">
-      {items.map((it) => (
-        <div key={it.label}>
-          <span>{it.label}</span>
-          <b className={it.warn ? "warn" : ""}>{it.value}</b>
-        </div>
-      ))}
-    </div>
-  );
-}
+/** The thin number strip (shared with every admin screen). */
+export { NumStrip } from "../../ui/components";
 
 /**
  * A section card with a title bar. Read view first; the header button (Edit,

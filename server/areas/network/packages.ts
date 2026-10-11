@@ -12,6 +12,7 @@ import { fmtMoney } from "@shared/format";
 import { id, isoDate } from "./common";
 import { eventPackages, vendorIn, vendorMoney } from "./vendors";
 import { sendVendorWelcome } from "../registration/recipientMessages";
+import { eventToday } from "../registration/logic";
 
 const bad = (message: string) => new TRPCError({ code: "BAD_REQUEST", message });
 const cents = z.number().int().min(0).max(100_000_000);
@@ -239,7 +240,7 @@ export const packagesRouter = router({
     const { event } = requireArea(ctx.user, input.eventId, "vendors", "edit");
     const v = vendorIn(input.eventId, input.vendorId);
     if (v.nextChargeCents <= 0) throw bad("Nothing is scheduled to charge.");
-    if (input.date < new Date().toISOString().slice(0, 10)) throw bad("Pick today or a later date.");
+    if (input.date < eventToday(event)) throw bad("Pick today or a later date.");
     getDb().update(schema.vendors).set({ nextChargeOn: input.date, nextChargeReminderAt: null, nextChargeError: "" }).where(eq(schema.vendors.id, v.id)).run();
     audit(ctx.user, { orgId: event.orgId, eventId: input.eventId, action: "vendor.next_charge", detail: `${v.company}: ${input.date}` });
     return { ok: true };

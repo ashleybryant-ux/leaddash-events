@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { trpc } from "../lib/trpc";
 import { AdminPage, useAdmin, useAdminEvent } from "../shells/AdminShell";
-import { EditSection, Empty, ErrorNote, Field, KV, Kpi, Modal, PageLoading, Pill, UploadButton, confirmAction } from "../ui/components";
+import { EditSection, Empty, ErrorNote, Field, KV, Modal, PageLoading, Pill, UploadButton, confirmAction, NumStrip } from "../ui/components";
 import { errorText, toast } from "../ui/toast";
 import { fmtDates, fmtMoney } from "@shared/format";
 import { SignIn } from "./SignIn";
@@ -451,12 +451,14 @@ export function EventHomeScreen() {
   return (
     <AdminPage title={ev.name} sub={`${fmtDates(ev.startDate, ev.endDate)}${ev.venueName ? ` · ${ev.venueName}` : ""}`}>
       {home.error ? <ErrorNote error={home.error} /> : null}
-      <div className="home-kpis">
-        <Kpi label="Registered" value={c ? c.registered : ""} />
-        {c?.sales !== null ? <Kpi label="Sales" value={c ? fmtMoney(c.sales, "$0.00") : ""} /> : null}
-        <Kpi label="Sessions" value={c ? c.sessions : ""} />
-        <Kpi label={when.label} value={when.value} />
-      </div>
+      <NumStrip
+        items={[
+          { label: "Registered", value: c ? c.registered : "" },
+          ...(c?.sales !== null ? [{ label: "Sales", value: c ? fmtMoney(c.sales, "$0.00") : "" }] : []),
+          { label: "Sessions", value: c ? c.sessions : "" },
+          { label: when.label, value: when.value },
+        ]}
+      />
       {steps.length && left ? (
         <div className="card card-pad col gap-8">
           <div className="row-between">

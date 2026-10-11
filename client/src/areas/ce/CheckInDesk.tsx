@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState } from "react";
 import { trpc } from "../../lib/trpc";
 import { AdminPage, useAdmin, useAdminEvent } from "../../shells/AdminShell";
-import { Empty, ErrorNote, Field, Kpi, Modal, PageLoading, Pill, confirmAction } from "../../ui/components";
+import { Empty, ErrorNote, Field, Modal, PageLoading, Pill, confirmAction, NumStrip } from "../../ui/components";
 import { IconSearch } from "../../ui/icons";
 import { errorText, toast } from "../../ui/toast";
 import { fmtWhenTime, fullName } from "@shared/format";
@@ -112,11 +112,13 @@ export function CheckInDesk() {
         </>
       }
     >
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
-        <Kpi label="Checked in" value={counts.data?.checkedIn ?? "0"} />
-        <Kpi label="Not yet" value={counts.data?.notYet ?? "0"} />
-        <Kpi label="Walk-ins" value={counts.data?.walkIns ?? "0"} />
-      </div>
+      <NumStrip
+        items={[
+          { label: "Checked in", value: counts.data?.checkedIn ?? "0" },
+          { label: "Not yet", value: counts.data?.notYet ?? "0" },
+          { label: "Walk-ins", value: counts.data?.walkIns ?? "0" },
+        ]}
+      />
 
       <div className="row wrap" style={{ gap: 18, alignItems: "flex-start" }}>
         <div className="col" style={{ flex: "999 1 420px", minWidth: 0, gap: 12 }}>

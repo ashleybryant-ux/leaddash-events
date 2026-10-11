@@ -3,7 +3,7 @@
  * the event. Rows open in place with the template (fields as green chips) and
  * its signing settings; Edit opens the editor with "Insert a field".
  */
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { trpc, type RouterOutputs } from "../../lib/trpc";
 import { useAdminEvent } from "../../shells/AdminShell";
 import { confirmAction, Empty, ErrorNote, ExpandRow, Field, Modal, PageLoading, RichTextEditor, THead, type RichTextApi } from "../../ui/components";
@@ -11,6 +11,7 @@ import { IconClose } from "../../ui/icons";
 import { errorText, toast } from "../../ui/toast";
 import { fmtDate, fmtWhen } from "@shared/format";
 import { SpSection } from "../network/sponsor-ui";
+import { loadSignatureFont, signaturePng } from "./SignAgreement";
 import "./agreements.css";
 
 type Data = RouterOutputs["agreements"]["templates"]["list"];
@@ -140,9 +141,13 @@ function TemplateEditor({ t, data, onClose }: { t: Template; data: Data; onClose
       </Field>
     );
 
+  useEffect(loadSignatureFont, []);
   const doSave = async () => {
     try {
-      await save.mutateAsync({ eventId: ev.id, templateId: t.id, ...d, name: d.name.trim(), body: fromEditor(d.body) });
+      // The organization signer's name is drawn in the signature font, the same way as the signer's, when it is new.
+      const signer = d.signerName.trim();
+      const countersignPng = signer && t.values["__countersignName"] !== signer ? await signaturePng(signer) : undefined;
+      await save.mutateAsync({ eventId: ev.id, templateId: t.id, ...d, name: d.name.trim(), body: fromEditor(d.body), countersignPng });
       toast("Saved");
       await utils.agreements.templates.list.invalidate();
       onClose();

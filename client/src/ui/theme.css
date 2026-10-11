@@ -65,6 +65,9 @@ h1, h2, h3 { margin: 0; }
 .gap-4 { gap: 4px; } .gap-6 { gap: 6px; } .gap-8 { gap: 8px; } .gap-12 { gap: 12px; } .gap-14 { gap: 14px; } .gap-16 { gap: 16px; } .gap-20 { gap: 20px; } .gap-24 { gap: 24px; }
 .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 16px; }
+/* A session's own page: details on the left, slides and handouts on the right. */
+.session-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+@media (max-width: 1100px) { .session-split { grid-template-columns: minmax(0, 1fr); } }
 .grid-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .span-2 { grid-column: span 2; } .span-3 { grid-column: span 3; } .span-all { grid-column: 1 / -1; }
 @media (max-width: 760px) { .grid-3, .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -119,9 +122,15 @@ h1, h2, h3 { margin: 0; }
 .banner-ok { background: var(--brand-tint); border: 1px solid #C5DDD3; color: var(--brand); }
 .banner-warn { background: var(--warn-bg); border: 1px solid var(--warn-line); color: var(--warn-ink); }
 .banner-bad { background: var(--bad-bg); border: 1px solid #F1C0BA; color: var(--bad-ink); }
-.kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
-.kpi-label { font-size: 13px; font-weight: 600; color: var(--muted); }
-.kpi-value { font-size: 26px; font-weight: 800; }
+/* Thin number strip: one rounded white bar of label and bold number cells (above folder tabs and lists). */
+.num-strip { display: inline-flex; align-self: flex-start; flex-wrap: wrap; max-width: 100%; background: #FFFFFF; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.num-strip > div { padding: 9px 18px; border-right: 1px solid var(--line-2); display: flex; align-items: baseline; gap: 8px; }
+.num-strip > div:last-child { border-right: none; }
+.num-strip span { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.num-strip b { font-size: 17px; font-weight: 800; }
+.num-strip b.warn { color: #B4671F; }
+.num-strip .note { font-size: 12px; color: var(--brand); font-weight: 700; }
+.num-strip .note.warn { color: #B4671F; }
 .empty { padding: 28px 16px; text-align: center; color: var(--muted); font-size: 14px; }
 
 /* ---------- Admin tables (grid rows) ---------- */
@@ -225,7 +234,6 @@ h1, h2, h3 { margin: 0; }
 .page-tabs a { height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line); background: #FFFFFF; color: var(--ink); font-size: 13px; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; white-space: nowrap; }
 .page-tabs a:hover { border-color: var(--brand); color: var(--brand); }
 .page-tabs a[aria-current="page"] { background: var(--brand-tint); border-color: var(--brand); color: var(--brand); font-weight: 800; }
-.home-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
 .home-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 @media (max-width: 1100px) { .home-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) { .home-tiles { grid-template-columns: 1fr; } }

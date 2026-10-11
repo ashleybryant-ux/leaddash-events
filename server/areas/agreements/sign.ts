@@ -197,13 +197,44 @@ export function templateForVendor(v: { eventId: number; kind: "exhibitor" | "spo
   return v.kind === "exhibitor" ? templateFor(v.eventId, "exhibitor") : templateFor(v.eventId, "sponsor") ?? (v.kind === "both" ? templateFor(v.eventId, "exhibitor") : undefined);
 }
 
+/** Templates that fit a vendor: sponsor ones for sponsors, exhibitor ones for exhibitors, both for sponsors who also exhibit. */
+const fitsVendor = (t: AgreementTemplate, v: { eventId: number; kind: "exhibitor" | "sponsor" | "both" }) =>
+  t.eventId === v.eventId && (v.kind === "exhibitor" ? t.kind === "exhibitor" : v.kind === "sponsor" ? t.kind === "sponsor" : t.kind !== "speaker");
+
+/**
+ * The template a vendor's agreement uses: the one picked in their details
+ * (kept on their latest unsigned agreement, a draft until it is sent), else
+ * the event's template for their kind.
+ */
+export function chosenTemplateForVendor(v: { id: number; eventId: number; kind: "exhibitor" | "sponsor" | "both" }) {
+  const open = agreementsForVendor(v.id).find((a) => a.status !== "void");
+  const t = open?.templateId ? templateById(open.templateId) : undefined;
+  return t && fitsVendor(t, v) ? t : templateForVendor(v);
+}
+
+/** Saves the agreement template picked in a vendor's details on their unsigned agreement. Nothing is emailed. */
+export function setVendorTemplate(vendorId: number, templateId: number) {
+  const db = getDb();
+  const v = db.select().from(schema.vendors).where(eq(schema.vendors.id, vendorId)).get();
+  if (!v) throw bad("That sponsor was not found.");
+  const t = templateById(templateId);
+  if (!t || !fitsVendor(t, v)) throw bad("Pick an agreement for this kind.");
+  const list = agreementsForVendor(v.id).filter((a) => a.status !== "void");
+  if (list.some((a) => a.status === "signed")) throw bad("This agreement is already signed.");
+  const open = list[0];
+  if (open && open.templateId === t.id) return;
+  const values = valuesFor(eventOf(v.eventId), t, { kind: t.kind, vendor: v });
+  if (open) db.update(schema.agreements).set({ html: fillAgreement(t.body, values), templateId: t.id, title: t.name, kind: t.kind }).where(eq(schema.agreements.id, open.id)).run();
+  else createAgreement({ eventId: v.eventId, templateId: t.id, kind: t.kind, vendorId: v.id, signerEmail: v.email, values });
+}
+
 /** Sends a sponsor or exhibitor their agreement (refreshing an unsigned one, or creating it). */
 export async function sendVendorAgreement(vendorId: number) {
   const db = getDb();
   const v = db.select().from(schema.vendors).where(eq(schema.vendors.id, vendorId)).get();
   if (!v) throw bad("That sponsor was not found.");
   if (!v.email) throw bad("Add the contact's email first.");
-  const t = templateForVendor(v);
+  const t = chosenTemplateForVendor(v);
   if (!t) throw bad("Add an agreement for this kind on the Agreements tab first.");
   const list = agreementsForVendor(v.id).filter((a) => a.status !== "void");
   if (list.some((a) => a.status === "signed")) throw bad("This agreement is already signed.");
@@ -248,7 +279,15 @@ function notifyAddress(a: Agreement) {
   return page?.notifyEmail ?? "";
 }
 
-async function signedEmails(a: Agreement) {
+/** Emails the signer their signed copy again (Resend on a signed agreement). */
+export async function resendSignedCopy(agreementId: number) {
+  const a = getDb().select().from(schema.agreements).where(eq(schema.agreements.id, agreementId)).get();
+  if (!a || a.status !== "signed") throw bad("This agreement is not signed yet.");
+  if (!a.signerEmail) throw bad("There is no email for the signer.");
+  await signedEmails(a, { notify: false });
+}
+
+async function signedEmails(a: Agreement, opts: { notify?: boolean } = {}) {
   const event = eventOf(a.eventId);
   const style = eventMailStyle(event);
   const word = KIND_WORD[a.kind];
@@ -263,7 +302,7 @@ async function signedEmails(a: Agreement) {
     html: emailLayout({ ...style, title: "Your signed agreement", blocks: [`<p>Hi ${escapeHtml(a.signerName || "there")},</p>`, `<p>${escapeHtml(intro)}</p>`, emailButton("View signed copy", copyLink(a.code), event.branding)], footer }),
     attachments: [attachment],
   });
-  const notify = notifyAddress(a);
+  const notify = opts.notify === false ? "" : notifyAddress(a);
   if (notify) {
     const who = `${a.signerName}${a.signerTitle ? `, ${a.signerTitle}` : ""}`;
     await sendEmail({

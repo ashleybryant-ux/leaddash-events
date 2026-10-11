@@ -6,8 +6,9 @@
  *
  * Fonts are the PDF standard fonts (Times for serif event fonts, Helvetica for
  * the rest). The signer's signature is the PNG drawn in the browser in the
- * signature font; the organization's countersignature is the signer's name in
- * Times Italic, so nothing has to be drawn on the server.
+ * signature font; the organization's countersignature is the same kind of PNG,
+ * drawn when the template's signer was saved. Without one, the name is set in
+ * Times Italic in the same spot.
  */
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type RGB } from "pdf-lib";
 import { isHex, lookOf } from "@shared/brand";
@@ -196,15 +197,17 @@ export async function agreementPdf(a: Agreement): Promise<Uint8Array> {
   const sigTop = y;
   const block = async (x: number, s: (typeof copy.signatures)[number]) => {
     let lineY = sigTop - 34;
+    // A typed name sits where the drawn PNG's text sits (the PNG is 1.5 times the font size tall, with a 12px left margin, drawn 32pt tall).
+    const typed = () => page.drawText(winAnsi(s.name), { x: x + 4, y: lineY + 12, size: 21, font: fonts.sig, color: sigInk });
     if (s.png) {
       try {
         const img = await pdf.embedPng(s.png);
         const scale = Math.min(32 / img.height, colW / img.width);
         page.drawImage(img, { x, y: lineY + 2, width: img.width * scale, height: img.height * scale });
       } catch {
-        page.drawText(winAnsi(s.name), { x, y: lineY + 6, size: 22, font: fonts.sig, color: sigInk });
+        typed();
       }
-    } else if (s.name) page.drawText(winAnsi(s.name), { x, y: lineY + 6, size: 22, font: fonts.sig, color: sigInk });
+    } else if (s.name) typed();
     page.drawLine({ start: { x, y: lineY }, end: { x: x + colW, y: lineY }, thickness: 0.75, color: rgb(0.2, 0.2, 0.2) });
     lineY -= 14;
     const nameW = fonts.bold.widthOfTextAtSize(winAnsi(s.name || " "), 8.5);

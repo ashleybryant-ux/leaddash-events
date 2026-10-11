@@ -10,10 +10,10 @@ A conference app sold as LeadDash Events (first customer: NABC). Each event bran
 - Database changes: edit `drizzle/schema/*.ts`, then `npx drizzle-kit generate --name <what_changed>` and commit the migration.
 
 ## Where things are
-- `drizzle/schema/`: every table. `core.ts` (associations, people, events, files, staff roles, push, platform), `registration.ts` (tickets, attendees, orders, Stripe, messages), `program.ts` (sessions, speakers, agenda, announcements, dining, help), `ce.ts` (evaluations, check-ins, certificates), `network.ts` (messages, meetings, community, vendors, leads, maps, polls, proposals).
+- `drizzle/schema/`: every table. `core.ts` (associations, people, events, files, staff roles, push, platform), `registration.ts` (tickets, attendees, orders, Stripe, messages), `program.ts` (sessions, speakers, agenda, announcements, dining, help), `ce.ts` (evaluations, check-ins, certificates), `network.ts` (messages, meetings, community, vendors, leads, maps, polls, proposals), `sponsor.ts` (sponsor and exhibitor packages, add-ons, vendor payments, sponsor/exhibitor checkout pages and checkouts, agreement templates and agreements, session slide files, recipient log).
 - `server/_core/`: env, db, auth context, access rules (`access.ts`), email (SES), push (`notify()`), files, LeadDash platform outbox (`platform.ts`), scheduler.
 - `server/core/`: sign-in (`auth.ts`) and association/event/file/push routes (`router.ts`).
-- `server/areas/<area>/index.ts`: each feature area's tRPC router, defaults for new events (`seedEvent`), minute jobs, and plain HTTP routes.
+- `server/areas/<area>/index.ts`: each feature area's tRPC router, defaults for new events (`seedEvent`), minute jobs, and plain HTTP routes. `agreements` holds agreement templates, signing and the signed PDF (pdf-lib). Vendor checkout and scheduled vendor charges are `registration/vendorCheckout.ts` and `vendorCharges.ts`; speaker and vendor welcome emails are `registration/recipientMessages.ts`; slides are `program/slides.ts`.
 - `client/src/shells/`: `AttendeeShell` (event app frame, `useEventApp()`), `AdminShell` (`useAdmin()`, `<AdminPage>`, the sidebar with Find a page and the event switcher, breadcrumbs, and `eventGroups()`: every event page and its group).
 - `client/src/ui/`: `theme.css` (design system), `components.tsx` (EditSection, ExpandRow, Sheet, Avatar, QR, UploadButton...), `icons.tsx`, `toast.tsx`.
 - `client/src/areas/<area>/routes.tsx`: the area's screens (path, shell, render).
@@ -34,14 +34,15 @@ A conference app sold as LeadDash Events (first customer: NABC). Each event bran
 - The LeadDash Events wordmark stays in the admin. An event's own logo and colors appear only on attendee-facing pages (the app, checkout page, emails, badges, certificates).
 - Every route checks access with `server/_core/access.ts` helpers. Attendees only see their own data. Staff see what their role allows.
 - Events only: no membership, dues, member directory or member hub. Members tickets ask for a member ID; the organization checks it in its own membership system.
+- Uploads: images and documents go through tRPC (15 MB); slide decks stream to `/api/upload/session-file` (100 MB). nginx `client_max_body_size` must stay at least 110m.
 - Never commit keys, passwords or `.env`. No client or patient health information anywhere.
 - Keep changes small and in the style of the code around them. Add or update a test for what you change.
 
 ## Route map (links between areas must use these)
 Attendee app (`/e/:slug`): `` (welcome) · `/agenda` · `/my` · `/session/:sessionId` · `/speakers` · `/alerts` · `/more` · `/dining` · `/nearby` · `/host` · `/help` · `/lost-found` · `/checkin/:sessionId` · `/eval/:sessionId` · `/credits` · `/transcript` · `/badge` · `/people` · `/people/:attendeeId` · `/profile` · `/messages` · `/messages/:threadId` · `/meet/:attendeeId` · `/community` · `/community/new` · `/community/:channelId` · `/exhibitors` · `/exhibitors/:vendorId` · `/map` · `/poll/:sessionId` · `/leads`
 
-Public: `/r/:slug` (checkout page) · `/r/:slug/register` · `/r/:slug/pay` · `/r/:slug/done` · `/embed/:slug` · `/embed.js` · `/get/:slug` (get the app) · `/cfp/:slug` (submit a proposal) · `/cert/:code` (certificate and check)
+Public: `/r/:slug` (checkout page) · `/r/:slug/register` · `/r/:slug/pay` · `/r/:slug/done` · `/r/:slug/sponsor` · `/r/:slug/sponsor/done` · `/r/:slug/sponsor/pay` · `/r/:slug/exhibit` · `/r/:slug/exhibit/done` · `/r/:slug/exhibit/pay` · `/sign/:code` (sign an agreement) · `/agreement/:code` (signed copy, `/pdf`) · `/speak/:token` (speaker page: slides, bio, agreement) · `/embed/:slug` · `/embed.js` · `/get/:slug` (get the app) · `/cfp/:slug` (submit a proposal) · `/cert/:code` (certificate and check)
 
-Admin event (`/admin/e/:eventId`): `` (event home) · `/sessions` · `/sessions/:sessionId` · `/speakers` · `/speakers/:speakerId` · `/announcements` · `/help` · `/dining` · `/host` · `/branding` · `/registration?tab=tickets|checkout|welcome|payments` · `/checkin` · `/attendees` · `/evaluations` · `/evaluations/:evaluationId` · `/certificates` · `/certificates/:templateId` · `/reports` · `/staff` · `/proposals` · `/vendors` · `/vendors/:vendorId` · `/community` · `/settings`
+Admin event (`/admin/e/:eventId`): `` (event home) · `/sessions` · `/sessions/:sessionId` · `/speakers` · `/speakers/:speakerId` · `/announcements` · `/help` · `/dining` · `/host` · `/branding` · `/registration?tab=tickets|checkout|welcome|payments` (checkout and welcome take `&who=sponsors|exhibitors|speakers`) · `/checkin` · `/attendees` · `/evaluations` · `/evaluations/:evaluationId` · `/certificates` · `/certificates/:templateId` · `/reports` · `/staff` · `/proposals` · `/vendors?tab=sponsors|exhibitors|packages|addons|agreements|map` (Sponsors and exhibitors) · `/vendors/:vendorId` · `/community` · `/settings`
 
 Admin association (`/admin`): `` (events) · `/settings` · `/payments` · `/leaddash` (LeadDash staff tools)

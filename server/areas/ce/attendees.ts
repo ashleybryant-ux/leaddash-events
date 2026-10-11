@@ -147,6 +147,7 @@ async function sendPayLinkEmail(order: Order, attendee: typeof schema.attendees.
       accent,
       look: ev.branding,
       coverUrl: coverFor(ev),
+      eventName: ev.name,
       title: "Pay for your ticket",
       blocks: [
         `<p style="margin:0 0 12px">Hello ${escapeHtml(attendee.firstName)},</p>`,

@@ -128,7 +128,7 @@ const proposalInput = z.object({
 
 function brandEmail(event: Event, title: string, blocks: string[]) {
   const org = getDb().select().from(schema.organizations).where(eq(schema.organizations.id, event.orgId)).get()!;
-  return { html: emailLayout({ brand: event.branding.colorPrimary, accent: event.branding.colorAccent, look: event.branding, coverUrl: fileUrl(event.branding.coverFileId, true), title, blocks, footer: escapeHtml(org.name) }), orgName: org.name };
+  return { html: emailLayout({ brand: event.branding.colorPrimary, accent: event.branding.colorAccent, look: event.branding, coverUrl: fileUrl(event.branding.coverFileId, true), eventName: event.name, title, blocks, footer: escapeHtml(org.name) }), orgName: org.name };
 }
 
 function decisionEmail(event: Event, p: Proposal, session: { date: string; startTime: string; room: string } | null) {

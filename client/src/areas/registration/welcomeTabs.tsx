@@ -2,7 +2,7 @@
  * Welcome emails page tabs: Attendees (the existing screen), Speakers,
  * Sponsors and Exhibitors. /admin/e/:eventId/registration?tab=welcome&who=speakers
  */
-import { useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useLocation, useSearch } from "wouter";
 import { trpc, type RouterOutputs } from "../../lib/trpc";
 import type { useAdminEvent } from "../../shells/AdminShell";
@@ -358,26 +358,43 @@ function FollowUpEditor({ event, group, t, readOnly, onChange, onDone }: { event
   );
 }
 
+/** The email is laid out at this width (like a phone mail app) and scaled down to fit the preview column. */
+const MAIL_WIDTH = 440;
+
 function Preview({ event, draft }: { event: AdminEvent; draft: Draft }) {
   const debounced = useDebounced(draft, 450);
   const preview = trpc.registration.welcomes.preview.useQuery({ eventId: event.id, ...debounced }, { placeholderData: (prev) => prev, retry: false });
   const [height, setHeight] = useState(640);
+  const [width, setWidth] = useState(342);
+  const box = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const measure = () => setWidth(el.clientWidth || 342);
+    measure();
+    const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, [preview.data?.html]);
+  const scale = Math.min(1, width / MAIL_WIDTH);
   return (
-    <div className="col gap-8" style={{ flex: "0 0 350px", maxWidth: "100%", background: "#F8FAFB", border: "1px solid var(--line)", borderRadius: 12, padding: "12px 4px 4px" }}>
+    <div className="col gap-8" style={{ flex: "0 0 350px", maxWidth: "100%", minWidth: 0, background: "#F8FAFB", border: "1px solid var(--line)", borderRadius: 12, padding: "12px 4px 4px" }}>
       <span className="small muted strong" style={{ paddingLeft: 8 }}>Preview</span>
       {preview.error ? (
         <div className="small err">{errorText(preview.error)}</div>
       ) : preview.data?.html ? (
-        <iframe
-          title="Email preview"
-          sandbox="allow-same-origin"
-          srcDoc={preview.data.html}
-          onLoad={(e) => {
-            const doc = e.currentTarget.contentDocument;
-            if (doc?.body) setHeight(Math.max(200, doc.body.offsetHeight + 4));
-          }}
-          style={{ width: "100%", height, border: 0, display: "block", background: "transparent" }}
-        />
+        <div ref={box} style={{ position: "relative", width: "100%", minWidth: 0, height: Math.ceil(height * scale), overflow: "hidden" }}>
+          <iframe
+            title="Email preview"
+            sandbox="allow-same-origin"
+            srcDoc={preview.data.html}
+            onLoad={(e) => {
+              const doc = e.currentTarget.contentDocument;
+              if (doc?.body) setHeight(Math.max(200, doc.body.offsetHeight + 4));
+            }}
+            style={{ position: "absolute", left: 0, top: 0, width: MAIL_WIDTH, height, border: 0, display: "block", background: "transparent", transform: `scale(${scale})`, transformOrigin: "0 0" }}
+          />
+        </div>
       ) : (
         <PageLoading />
       )}

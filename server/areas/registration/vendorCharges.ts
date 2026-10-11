@@ -104,7 +104,7 @@ export function orgNoticeTo(ev: EventRow, kind: "sponsor" | "exhibitor") {
 
 /** The event's email look (colors, font, cover) and the from name. */
 export function vendorMailStyle(ev: EventRow) {
-  return { brand: ev.branding.colorPrimary, accent: ev.branding.colorAccent, look: ev.branding, coverUrl: fileUrl(ev.branding.coverFileId, true), fromName: ev.shortName || ev.name };
+  return { brand: ev.branding.colorPrimary, accent: ev.branding.colorAccent, look: ev.branding, coverUrl: fileUrl(ev.branding.coverFileId, true), eventName: ev.name, fromName: ev.shortName || ev.name };
 }
 
 /** A small two-column summary table for emails. Rows are [label, value, bold]. */
@@ -230,6 +230,38 @@ export async function paymentFailedEmails(v: Vendor, amountCents: number, reason
   }
 }
 
+/**
+ * A plain notice to the organization about a sponsor or exhibitor (refund
+ * needed, package oversold, hold ended). One failed send never stops the rest.
+ */
+export async function orgVendorNotice(v: Pick<Vendor, "eventId" | "kind">, subject: string, title: string, text: string) {
+  const ev = eventOf(v.eventId);
+  const org = orgOf(ev);
+  const style = vendorMailStyle(ev);
+  const kind = isSponsor(v) ? "sponsor" : "exhibitor";
+  const adminUrl = `${ENV.appUrl}/admin/e/${ev.id}/vendors`;
+  for (const to of orgNoticeTo(ev, kind)) {
+    try {
+      await sendEmail({
+        to,
+        fromName: style.fromName,
+        subject: `${style.fromName}: ${subject}`,
+        text: [text, `Open ${kind}s: ${adminUrl}`].join("\n\n"),
+        html: emailLayout({ ...style, title, blocks: [`<p>${escapeHtml(text)}</p>`, emailButton(`Open ${kind}s`, adminUrl, ev.branding)], footer: escapeHtml(org.name) }),
+      });
+    } catch (err) {
+      console.error("[vendor charges] organization notice:", err);
+    }
+  }
+}
+
+/** Tells the organization a vendor paid more than they owed (nothing is refunded automatically). */
+export async function overpaidNotice(v: Vendor, paidCents: number, owedCents: number) {
+  const extra = fmtMoney(paidCents - owedCents, "$0.00");
+  const text = `${v.company} paid ${fmtMoney(paidCents, "$0.00")} for the ${boughtLabel(v)} when ${fmtMoney(owedCents, "$0.00")} was owed. Refund ${extra} in your Stripe dashboard.`;
+  await orgVendorNotice(v, `refund needed for ${v.company}`, "A refund is needed", text);
+}
+
 /** "insufficient_funds" -> "Insufficient funds" */
 export const reasonWords = (s: string | null | undefined) => {
   const t = String(s || "").replace(/_/g, " ").trim();
@@ -240,52 +272,101 @@ function clearNextCharge(vendorId: number) {
   getDb().update(schema.vendors).set({ nextChargeCents: 0, nextChargeOn: null, nextChargeReminderAt: null, nextChargeError: "" }).where(eq(schema.vendors.id, vendorId)).run();
 }
 
-export type ChargeResult = { status: "paid" | "pending" | "failed" | "nothing"; error?: string };
+/** waiting: a pay link payment is open, so nothing was charged. */
+export type ChargeResult = { status: "paid" | "pending" | "failed" | "nothing" | "waiting"; error?: string };
+
+/** Shown on a scheduled charge Stripe did not answer for (a timeout): the webhook or the next try settles it. */
+export const UNCONFIRMED_NOTE = "Waiting for Stripe to confirm";
+
+/** Whether a Stripe error means the charge was turned down (not a timeout or outage, where it may have gone through). */
+function definiteFailure(err: unknown) {
+  const e = err as { type?: string; raw?: { type?: string; payment_intent?: unknown }; payment_intent?: unknown };
+  if (e.raw?.payment_intent || e.payment_intent) return true;
+  if (["StripeCardError", "StripeInvalidRequestError", "StripePermissionError", "StripeAuthenticationError"].includes(e.type ?? "")) return true;
+  return ["card_error", "invalid_request_error"].includes(e.raw?.type ?? "");
+}
+
+/**
+ * Before the scheduled charge: a pay link session that is still open means
+ * the vendor may be paying right now, so the charge waits. Once it is past its
+ * expiry it is checked (a finished one is recorded first) and expired at
+ * Stripe to be sure, then forgotten. Returns true when the charge must wait.
+ */
+async function payLinkOpen(v: Vendor, account: string, now: Date) {
+  if (!v.paySessionId) return false;
+  if (v.paySessionExpiresAt && new Date(v.paySessionExpiresAt).getTime() > now.getTime()) return true;
+  try {
+    const s = await vstripe().checkout.sessions.retrieve(v.paySessionId, {}, { stripeAccount: account });
+    if (s.status === "complete") {
+      const { completeBalance } = await import("./vendorCheckout");
+      await completeBalance(v.id, s, account);
+    } else if (s.status === "open") {
+      await vstripe().checkout.sessions.expire(v.paySessionId, {}, { stripeAccount: account });
+    }
+  } catch (err) {
+    console.error("[vendor charges] pay link check:", err);
+    return true;
+  }
+  getDb().update(schema.vendors).set({ paySessionId: null, paySessionExpiresAt: null }).where(and(eq(schema.vendors.id, v.id), eq(schema.vendors.paySessionId, v.paySessionId))).run();
+  return false;
+}
 
 /**
  * Charges what is scheduled (or what is owed, for Charge now) to the saved
  * payment method, off session. A pending row is written first, so two runs
- * can never charge twice; the idempotency key also covers retries of the same
- * attempt. Bank payments stay pending until payment_intent.succeeded.
+ * can never charge twice. The idempotency key is the same for every try of
+ * one attempt (vendor, due date, attempt number); a try Stripe did not answer
+ * keeps its pending row and key, so the next try (or Charge now) gets the same
+ * PaymentIntent back instead of a second charge. Bank payments stay pending
+ * until payment_intent.succeeded.
  */
 export async function chargeBalance(vendorId: number, now = new Date()): Promise<ChargeResult> {
   const db = getDb();
-  const v = db.select().from(schema.vendors).where(eq(schema.vendors.id, vendorId)).get();
+  let v = db.select().from(schema.vendors).where(eq(schema.vendors.id, vendorId)).get();
   if (!v || v.status === "cancelled") return { status: "nothing" };
+  const ev = eventOf(v.eventId);
+  const acct = accountRow(ev.orgId);
+  if (acct && (await payLinkOpen(v, acct.accountId, now))) return { status: "waiting", error: "A payment from the pay link is open. Try again in an hour." };
+  v = db.select().from(schema.vendors).where(eq(schema.vendors.id, vendorId)).get()!;
   const payments = db.select().from(schema.vendorPayments).where(eq(schema.vendorPayments.vendorId, v.id)).all();
+  const balanceRows = payments.filter((p) => p.purpose === "balance");
+  const unconfirmed = balanceRows.find((p) => p.status === "pending" && !p.stripePaymentIntentId && !!p.stripeIdempotencyKey);
+  if (!unconfirmed && balanceRows.some((p) => p.status === "pending")) return { status: "pending" };
   const owed = vendorMoney(v, payments).owedCents;
-  if (owed <= 0) {
+  if (!unconfirmed && owed <= 0) {
     if (v.nextChargeCents > 0) clearNextCharge(v.id);
     return { status: "nothing" };
   }
-  if (payments.some((p) => p.status === "pending" && p.purpose === "balance")) return { status: "pending" };
-  const ev = eventOf(v.eventId);
   const today = eventToday(ev, now);
-  const amount = v.nextChargeCents > 0 ? Math.min(v.nextChargeCents, owed) : owed;
-  const acct = accountRow(ev.orgId);
-  const isBank = /^bank/i.test(v.payMethodLabel);
-  const attempt = payments.filter((p) => p.purpose === "balance").length + 1;
+  const amount = unconfirmed ? unconfirmed.amountCents : v.nextChargeCents > 0 ? Math.min(v.nextChargeCents, owed) : owed;
+  const isBank = unconfirmed ? unconfirmed.method === "bank" : /^bank/i.test(v.payMethodLabel);
+  const key = unconfirmed?.stripeIdempotencyKey ?? `vendor-balance-${v.id}-${v.nextChargeOn ?? today}-${balanceRows.length + 1}`;
+  const vendor = v;
 
   const fail = async (rowId: number | null, reason: string, piId?: string | null) => {
     const clean = reason.slice(0, 300) || "The payment was declined";
-    if (rowId) db.update(schema.vendorPayments).set({ status: "failed", failureReason: clean, ...(piId ? { stripePaymentIntentId: piId } : {}) }).where(eq(schema.vendorPayments.id, rowId)).run();
-    db.update(schema.vendors).set({ nextChargeError: clean }).where(eq(schema.vendors.id, v.id)).run();
-    syncPaid(v.id);
+    if (rowId) db.update(schema.vendorPayments).set({ status: "failed", failureReason: clean, note: "", ...(piId ? { stripePaymentIntentId: piId } : {}) }).where(eq(schema.vendorPayments.id, rowId)).run();
+    db.update(schema.vendors).set({ nextChargeError: clean }).where(eq(schema.vendors.id, vendor.id)).run();
+    syncPaid(vendor.id);
     try {
-      await paymentFailedEmails(v, amount, clean);
+      await paymentFailedEmails(vendor, amount, clean);
     } catch (err) {
       console.error("[vendor charges] failure emails:", err);
     }
     return { status: "failed" as const, error: clean };
   };
 
-  if (!v.stripeCustomerId || !v.stripePaymentMethodId) return fail(null, "No saved payment method");
-  if (!acct || !acct.chargesEnabled) return fail(null, "Stripe is not connected");
-  const row = db
-    .insert(schema.vendorPayments)
-    .values({ eventId: v.eventId, vendorId: v.id, amountCents: amount, method: isBank ? "bank" : "card", status: "pending", purpose: "balance", paidOn: today, reference: v.payMethodLabel, stripeAccountId: acct.accountId })
-    .returning()
-    .get();
+  // A try Stripe did not answer may still have charged: it is never marked failed here, only settled by Stripe.
+  const notNow = (reason: string) => (unconfirmed ? { status: "pending" as const, error: `${reason}. The last charge is still waiting for Stripe to confirm.` } : fail(null, reason));
+  if (!vendor.stripeCustomerId || !vendor.stripePaymentMethodId) return notNow("No saved payment method");
+  if (!acct || !acct.chargesEnabled) return notNow("Stripe is not connected");
+  const row =
+    unconfirmed ??
+    db
+      .insert(schema.vendorPayments)
+      .values({ eventId: vendor.eventId, vendorId: vendor.id, amountCents: amount, method: isBank ? "bank" : "card", status: "pending", purpose: "balance", paidOn: today, reference: vendor.payMethodLabel, stripeAccountId: acct.accountId, stripeIdempotencyKey: key })
+      .returning()
+      .get();
   let pi: Stripe.PaymentIntent;
   try {
     const fee = platformFee(amount);
@@ -293,27 +374,31 @@ export async function chargeBalance(vendorId: number, now = new Date()): Promise
       {
         amount,
         currency: "usd",
-        customer: v.stripeCustomerId,
-        payment_method: v.stripePaymentMethodId,
+        customer: vendor.stripeCustomerId,
+        payment_method: vendor.stripePaymentMethodId,
         allowed_payment_method_types: [isBank ? "us_bank_account" : "card"],
         confirm: true,
         off_session: true,
         ...(fee > 0 ? { application_fee_amount: fee } : {}),
-        description: `${ev.name}: ${boughtLabel(v)} for ${v.company}`,
-        ...(v.email ? { receipt_email: v.email } : {}),
-        metadata: { leaddash_vendor_id: String(v.id), leaddash_event_id: String(ev.id) },
+        description: `${ev.name}: ${boughtLabel(vendor)} for ${vendor.company}`,
+        ...(vendor.email ? { receipt_email: vendor.email } : {}),
+        metadata: { leaddash_vendor_id: String(vendor.id), leaddash_event_id: String(ev.id), leaddash_charge_key: key },
       },
-      { stripeAccount: acct.accountId, idempotencyKey: `vendor-balance-${v.id}-${v.nextChargeOn ?? today}-${attempt}` }
+      { stripeAccount: acct.accountId, idempotencyKey: key }
     );
   } catch (err) {
     const e = err as { message?: string; raw?: { payment_intent?: { id?: string } }; payment_intent?: { id?: string } };
-    return fail(row.id, e.message || "The payment was declined", e.raw?.payment_intent?.id ?? e.payment_intent?.id ?? null);
+    if (definiteFailure(err)) return fail(row.id, e.message || "The payment was declined", e.raw?.payment_intent?.id ?? e.payment_intent?.id ?? null);
+    // A timeout or outage: Stripe may have charged. The row stays pending with its key; the webhook or the next try settles it.
+    console.error("[vendor charges] charge not confirmed:", err);
+    db.update(schema.vendorPayments).set({ note: UNCONFIRMED_NOTE }).where(eq(schema.vendorPayments.id, row.id)).run();
+    return { status: "pending", error: "Stripe has not confirmed this charge yet. It updates on its own, so do not charge again." };
   }
-  db.update(schema.vendorPayments).set({ stripePaymentIntentId: pi.id }).where(eq(schema.vendorPayments.id, row.id)).run();
+  db.update(schema.vendorPayments).set({ stripePaymentIntentId: pi.id, note: "" }).where(eq(schema.vendorPayments.id, row.id)).run();
   if (pi.status === "succeeded" || pi.status === "processing") {
     db.update(schema.vendorPayments).set({ status: pi.status === "succeeded" ? "paid" : "pending" }).where(eq(schema.vendorPayments.id, row.id)).run();
-    clearNextCharge(v.id);
-    syncPaid(v.id);
+    clearNextCharge(vendor.id);
+    syncPaid(vendor.id);
     return { status: pi.status === "succeeded" ? "paid" : "pending" };
   }
   const reason = pi.last_payment_error?.message || (pi.status === "requires_action" ? "The bank or card asked the payer to confirm this payment" : "The payment was declined");
@@ -323,7 +408,8 @@ export async function chargeBalance(vendorId: number, now = new Date()): Promise
 /**
  * Minute job: the reminder 7 days before nextChargeOn (once), then the charge
  * on or after the date (once; a failed charge waits for staff to Charge now or
- * change the date). Dates are the event's calendar dates.
+ * change the date). Also tells the organization once when an invoice hold
+ * ended with nothing paid. Dates are the event's calendar dates.
  */
 export async function runVendorCharges(now = new Date()) {
   const db = getDb();
@@ -346,27 +432,71 @@ export async function runVendorCharges(now = new Date()) {
       console.error(`[vendor charges] vendor ${v.id}:`, err);
     }
   }
+  await runHoldNotices(now);
   return n;
 }
 
-/** payment_intent.succeeded / payment_failed for a vendor payment (bank payments clearing, or failing). Null when it is not a vendor payment. */
+/** Whether an invoice hold has ended (after its date, in the event's time zone) with nothing paid or clearing. */
+export function holdLapsed(v: Pick<Vendor, "holdUntil" | "status">, payments: Pick<VendorPayment, "status" | "amountCents">[], today: string) {
+  if (!v.holdUntil || v.status === "cancelled" || today <= v.holdUntil) return false;
+  return !payments.some((p) => (p.status === "paid" || p.status === "pending") && p.amountCents > 0);
+}
+
+/** Tells the organization, once, that an invoice hold ended with nothing paid. The sponsor or exhibitor stays on the list. */
+async function runHoldNotices(now: Date) {
+  const db = getDb();
+  const held = db.select().from(schema.vendors).where(isNull(schema.vendors.holdNoticeAt)).all().filter((v) => v.holdUntil && v.status !== "cancelled");
+  for (const v of held) {
+    try {
+      const ev = eventOf(v.eventId);
+      const payments = db.select().from(schema.vendorPayments).where(eq(schema.vendorPayments.vendorId, v.id)).all();
+      if (!holdLapsed(v, payments, eventToday(ev, now))) continue;
+      const claimed = db.update(schema.vendors).set({ holdNoticeAt: now }).where(and(eq(schema.vendors.id, v.id), isNull(schema.vendors.holdNoticeAt))).run().changes === 1;
+      if (!claimed) continue;
+      const kind = isSponsor(v) ? "sponsor" : "exhibitor";
+      const text = `The invoice hold for ${v.company} (${boughtLabel(v)}) ended ${fmtDate(v.holdUntil)} and nothing has been paid. The ${isSponsor(v) ? "package" : "booth"} is open for others to buy again. The ${kind} is still on your list: send the invoice again, record a payment, or set Status to Cancelled.`;
+      await orgVendorNotice(v, `invoice hold ended for ${v.company}`, "An invoice hold ended", text);
+    } catch (err) {
+      console.error(`[vendor charges] hold notice ${v.id}:`, err);
+    }
+  }
+}
+
+/**
+ * payment_intent.succeeded / payment_failed for a vendor payment (bank
+ * payments clearing or failing, and scheduled charges Stripe did not answer
+ * for, found by the charge key in the metadata). Null when it is not a vendor payment.
+ */
 export async function handleVendorPaymentIntent(type: "payment_intent.succeeded" | "payment_intent.payment_failed", pi: Stripe.PaymentIntent, account: string | null) {
   const db = getDb();
-  const row = db
+  let row = db
     .select()
     .from(schema.vendorPayments)
     .where(and(eq(schema.vendorPayments.stripePaymentIntentId, pi.id), eq(schema.vendorPayments.stripeAccountId, account ?? "")))
     .get();
+  const key = pi.metadata?.leaddash_charge_key;
+  if (!row && key) {
+    const byKey = db
+      .select()
+      .from(schema.vendorPayments)
+      .where(and(eq(schema.vendorPayments.stripeIdempotencyKey, key), eq(schema.vendorPayments.stripeAccountId, account ?? "")))
+      .get();
+    if (byKey && String(byKey.vendorId) === pi.metadata?.leaddash_vendor_id && !byKey.stripePaymentIntentId) {
+      db.update(schema.vendorPayments).set({ stripePaymentIntentId: pi.id, note: "" }).where(eq(schema.vendorPayments.id, byKey.id)).run();
+      row = { ...byKey, stripePaymentIntentId: pi.id, note: "" };
+    }
+  }
   if (!row) return null;
   if (type === "payment_intent.succeeded") {
     if (row.status !== "pending") return "ignored";
-    db.update(schema.vendorPayments).set({ status: "paid" }).where(and(eq(schema.vendorPayments.id, row.id), eq(schema.vendorPayments.status, "pending"))).run();
+    db.update(schema.vendorPayments).set({ status: "paid", note: "" }).where(and(eq(schema.vendorPayments.id, row.id), eq(schema.vendorPayments.status, "pending"))).run();
+    if (row.purpose === "balance") clearNextCharge(row.vendorId);
     syncPaid(row.vendorId);
     return "vendor_paid";
   }
   if (row.status !== "pending") return "ignored";
   const reason = pi.last_payment_error?.message || reasonWords(pi.last_payment_error?.code) || "The payment was declined";
-  const won = db.update(schema.vendorPayments).set({ status: "failed", failureReason: reason.slice(0, 300) }).where(and(eq(schema.vendorPayments.id, row.id), eq(schema.vendorPayments.status, "pending"))).run().changes === 1;
+  const won = db.update(schema.vendorPayments).set({ status: "failed", failureReason: reason.slice(0, 300), note: "" }).where(and(eq(schema.vendorPayments.id, row.id), eq(schema.vendorPayments.status, "pending"))).run().changes === 1;
   if (!won) return "ignored";
   const v = db.select().from(schema.vendors).where(eq(schema.vendors.id, row.vendorId)).get();
   if (!v) return "ignored";
@@ -374,6 +504,39 @@ export async function handleVendorPaymentIntent(type: "payment_intent.succeeded"
   syncPaid(v.id);
   await paymentFailedEmails(v, row.amountCents, reason);
   return "vendor_failed";
+}
+
+/**
+ * charge.refunded for a vendor payment: a full refund marks the payment
+ * refunded, a partial one lowers it to what was kept. The vendor owes the
+ * refunded amount again and the organization is told. Null when it is not a vendor payment.
+ */
+export async function handleVendorRefund(c: Stripe.Charge, account: string | null) {
+  const db = getDb();
+  const piId = typeof c.payment_intent === "string" ? c.payment_intent : c.payment_intent?.id;
+  if (!piId) return null;
+  const row = db
+    .select()
+    .from(schema.vendorPayments)
+    .where(and(eq(schema.vendorPayments.stripePaymentIntentId, piId), eq(schema.vendorPayments.stripeAccountId, account ?? "")))
+    .get();
+  if (!row) return null;
+  if (row.status === "refunded" || row.status === "failed") return "ignored";
+  const full = c.refunded || c.amount_refunded >= c.amount;
+  const kept = Math.max(0, c.amount - c.amount_refunded);
+  const note = full ? "" : `Partly refunded: ${fmtMoney(c.amount_refunded, "$0.00")}`;
+  if (full) db.update(schema.vendorPayments).set({ status: "refunded" }).where(eq(schema.vendorPayments.id, row.id)).run();
+  else if (row.amountCents !== kept) db.update(schema.vendorPayments).set({ amountCents: kept, note }).where(eq(schema.vendorPayments.id, row.id)).run();
+  else return "ignored";
+  syncPaid(row.vendorId);
+  const v = db.select().from(schema.vendors).where(eq(schema.vendors.id, row.vendorId)).get();
+  if (v) {
+    const payments = db.select().from(schema.vendorPayments).where(eq(schema.vendorPayments.vendorId, v.id)).all();
+    const owed = vendorMoney(v, payments).owedCents;
+    const text = `${fmtMoney(c.amount_refunded, "$0.00")} of the ${fmtMoney(c.amount, "$0.00")} payment from ${v.company} (${boughtLabel(v)}) was refunded in Stripe. They now owe ${fmtMoney(owed, "$0.00")}.`;
+    await orgVendorNotice(v, `refund for ${v.company}`, "A payment was refunded", text);
+  }
+  return "vendor_refunded";
 }
 
 /**

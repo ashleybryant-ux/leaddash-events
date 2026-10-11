@@ -114,6 +114,12 @@ export function eventPackages(eventId: number) {
     .sort((a, b) => a.sort - b.sort || a.id - b.id);
 }
 
+/** Admin list order: by package order (no package last), then the biggest amount, then name. */
+function packageOrder(list: Vendor[], packages: Map<number, Pkg>) {
+  const rank = (v: Vendor) => (v.packageId && packages.has(v.packageId) ? packages.get(v.packageId)!.sort : Number.MAX_SAFE_INTEGER);
+  return list.sort((a, b) => rank(a) - rank(b) || b.amountCents - a.amountCents || a.company.localeCompare(b.company));
+}
+
 /** Sponsors first (by package order, then biggest amounts), then exhibitors by name. */
 function directoryOrder(list: Vendor[], packages: Map<number, Pkg>) {
   const rank = (v: Vendor) => (v.packageId && packages.has(v.packageId) ? packages.get(v.packageId)!.sort : Number.MAX_SAFE_INTEGER);
@@ -371,7 +377,7 @@ const adminRouter = router({
     const booths = new Set(maps.flatMap((m) => m.pins.filter((p) => p.kind === "booth").map((p) => p.label.replace(/^booth\s*/i, "").trim())));
     const taken = new Set(rows.filter((r) => r.status !== "cancelled" && r.booth).map((r) => r.booth));
     const active = rows.filter((r) => r.status !== "cancelled");
-    rows.sort((a, b) => a.company.localeCompare(b.company));
+    packageOrder(rows, new Map(eventPackages(input.eventId).map((p) => [p.id, p])));
     const extra = adminVendorRows(input.eventId, rows);
     const vendors = rows.map((v, i) => {
           const contract = v.contractFileId ? files.get(v.contractFileId) : undefined;
@@ -541,6 +547,13 @@ const adminRouter = router({
     requireArea(ctx.user, input.eventId, "vendors", "edit");
     const v = vendorIn(input.eventId, input.vendorId);
     const db = getDb();
+    // Online payments and signed agreements are records the organization keeps: those are cancelled, not deleted.
+    const paidOnline = db.select().from(schema.vendorPayments).where(eq(schema.vendorPayments.vendorId, v.id)).all().some((p) => p.stripePaymentIntentId || p.stripeSessionId);
+    const signed = db.select().from(schema.agreements).where(eq(schema.agreements.vendorId, v.id)).all().some((a) => a.status === "signed");
+    if (paidOnline || signed) {
+      const word = v.kind === "exhibitor" ? "exhibitor" : "sponsor";
+      throw new TRPCError({ code: "BAD_REQUEST", message: `This ${word} has ${paidOnline ? "online payments" : "a signed agreement"}, so it cannot be deleted. Set Status to Cancelled instead.` });
+    }
     db.delete(schema.staffAssignments).where(eq(schema.staffAssignments.vendorId, v.id)).run();
     db.update(schema.attendees).set({ vendorId: null }).where(eq(schema.attendees.vendorId, v.id)).run();
     db.delete(schema.vendors).where(eq(schema.vendors.id, v.id)).run();
@@ -571,6 +584,7 @@ const adminRouter = router({
         brand: event.branding.colorPrimary,
         accent: event.branding.colorAccent,
         look: event.branding,
+        eventName: event.name,
         title: "Balance due",
         blocks: [`<p>Hello${v.contactName ? ` ${escapeHtml(v.contactName)}` : ""},</p>`, `<p>Here is the balance for ${escapeHtml(v.company)} at ${escapeHtml(event.name)}.</p>`, `<p>${lines.map(escapeHtml).join("<br>")}</p>`, `<p>Reply to this email with any questions.</p>`],
         footer: escapeHtml(org.name),

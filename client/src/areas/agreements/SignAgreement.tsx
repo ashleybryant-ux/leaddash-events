@@ -49,6 +49,8 @@ export type SignAgreementProps = {
   disabled?: boolean;
   /** Shown at the top of the body, above the heading. */
   children?: ReactNode;
+  /** Shown at the end of the body, above the footer (a Back button at checkout). */
+  bottom?: ReactNode;
   onSigned: (result: SignResult) => void | Promise<void>;
 };
 
@@ -108,7 +110,7 @@ export function SignAgreement(props: SignAgreementProps) {
   );
 }
 
-function SignForm({ code, html, kind, heading, submitLabel, askRecording, prefill, pdfUrl, footerTop, short, disabled, children, onSigned }: SignAgreementProps & { html: string }) {
+function SignForm({ code, html, kind, heading, submitLabel, askRecording, prefill, pdfUrl, footerTop, short, disabled, children, bottom, onSigned }: SignAgreementProps & { html: string }) {
   const sign = trpc.agreements.public.sign.useMutation();
   const [full, setFull] = useState(false);
   const [name, setName] = useState(prefill?.name ?? "");
@@ -197,6 +199,7 @@ function SignForm({ code, html, kind, heading, submitLabel, askRecording, prefil
           <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
           <span>{speaker ? "I have read this agreement and I agree to it." : "I have read this agreement and I am signing it for my company."}</span>
         </label>
+        {bottom}
       </div>
       <div className="app-footer" style={{ marginTop: "auto" }}>
         {footerTop}

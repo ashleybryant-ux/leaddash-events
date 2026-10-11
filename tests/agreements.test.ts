@@ -122,6 +122,7 @@ describe("filling agreements", () => {
     const a = createAgreement({ eventId: s.event.id, templateId: t.id, kind: "exhibitor", checkoutId: c.id, signerEmail: "Jamie@Example.com", values: v });
     expect(a.status).toBe("draft");
     expect(a.html).toContain("Cedar Counseling Supply (the Exhibitor)");
+    expect(a.html).toContain("The Exhibitor is buying the Standard booth for $950.00, plus these add-ons: electricity.");
     expect(a.code.length).toBeGreaterThanOrEqual(24);
     expect(a.signerEmail).toBe("jamie@example.com");
   });
@@ -217,12 +218,61 @@ describe("sending and signing", () => {
     expect(outbox.find((m) => m.to === "events@example.org")?.attachments).toHaveLength(1);
 
     await expect(caller(null).agreements.public.sign({ code, name: "Pat Lee", title: "", signaturePng: PNG, recordingAllowed: null })).rejects.toThrow(/already signed/);
+    // Resend on a signed agreement emails the signer the signed copy again (not the notify address).
+    outbox.length = 0;
+    expect(await s.admin.agreements.resendVendorCopy({ eventId: s.event.id, vendorId: v.id })).toEqual({ ok: true, to: "pat@example.com" });
+    expect(outbox.map((m) => m.to)).toEqual(["pat@example.com"]);
+    expect(outbox[0].attachments?.[0].filename).toBe("Sponsor agreement 2027 (signed).pdf");
     const copy = await caller(null).agreements.public.copy({ code });
     expect(copy.signatures.map((x) => x.name)).toEqual(["Pat Lee", "Jordan Hayes"]);
     expect(copy.signatures[1].when).toMatch(/added automatically/);
     expect(copy.footer).toMatch(/Signer email pat@example.com · IP address 127.0.0.1 · Agreement ID SA-2027-\d{4}/);
     const after = await s.admin.agreements.templates.list({ eventId: s.event.id });
     expect(after.templates[0]).toMatchObject({ signed: 1, total: 1 });
+  });
+
+  it("uses the agreement template picked in the sponsor's details when sending", async () => {
+    const s = await setup();
+    const first = await sponsorTemplate(s);
+    const second = await s.admin.agreements.templates.create({ eventId: s.event.id, starter: "sponsor" });
+    getDb().update(schema.agreementTemplates).set({ name: "Gold sponsor agreement", updatedAt: new Date(Date.now() + 60_000) }).where(eq(schema.agreementTemplates.id, second.id)).run();
+    const v = await s.admin.network.vendors.create({ eventId: s.event.id, company: "Meadow Wellness", kind: "sponsor", contactName: "Pat Lee", email: "pat@example.com", status: "confirmed" });
+    expect(await s.admin.agreements.vendorTemplate({ eventId: s.event.id, vendorId: v.id })).toEqual({ templateId: second.id, signed: false });
+    outbox.length = 0;
+    await s.admin.agreements.setVendorTemplate({ eventId: s.event.id, vendorId: v.id, templateId: first.id });
+    expect(outbox).toHaveLength(0);
+    expect((await s.admin.agreements.vendorTemplate({ eventId: s.event.id, vendorId: v.id })).templateId).toBe(first.id);
+    // A picked template that is not sent yet does not show as an agreement on the list.
+    const row = (await s.admin.network.vendors.list({ eventId: s.event.id })).vendors.find((x) => x.id === v.id)!;
+    expect(row.agreement).toBeNull();
+    const sent = await s.admin.agreements.send({ eventId: s.event.id, vendorId: v.id });
+    const a = getDb().select().from(schema.agreements).where(eq(schema.agreements.id, sent.id)).get()!;
+    expect(a).toMatchObject({ templateId: first.id, status: "sent" });
+    expect(getDb().select().from(schema.agreements).where(eq(schema.agreements.vendorId, v.id)).all()).toHaveLength(1);
+    const speaker = await s.admin.agreements.templates.create({ eventId: s.event.id, starter: "speaker" });
+    await expect(s.admin.agreements.setVendorTemplate({ eventId: s.event.id, vendorId: v.id, templateId: speaker.id })).rejects.toThrow(/Pick an agreement/);
+  });
+
+  it("draws the organization signer's signature like the signer's when the template has one", async () => {
+    const s = await setup();
+    const t = await sponsorTemplate(s);
+    const saved = (await s.admin.agreements.templates.list({ eventId: s.event.id })).templates.find((x) => x.id === t.id)!;
+    const base = { eventId: s.event.id, templateId: t.id, name: saved.name, kind: "sponsor" as const, body: saved.body, values: saved.values, signWhen: "checkout" as const, sendOnAccept: true, sendOnAdd: true, reminders: "3x3" as const, askRecording: false, signerName: "Jordan Hayes", signerTitle: "Executive Director", countersign: true };
+    await s.admin.agreements.templates.save({ ...base, countersignPng: PNG });
+    // Saving again with the same name keeps the drawn signature.
+    await s.admin.agreements.templates.save({ ...base, values: {} });
+    const a = createAgreement({ eventId: s.event.id, templateId: t.id, kind: "sponsor", signerEmail: "x@example.com", values: {} });
+    const signed = await signAgreement(a.code, { name: "Alex Morgan", title: "", signaturePng: PNG }, { sendCopy: false });
+    const copy = await caller(null).agreements.public.copy({ code: signed.code });
+    expect(copy.signatures[1]).toMatchObject({ name: "Jordan Hayes", drawn: true });
+    expect(copy.signatures[1].pngUrl).toMatch(/^\/files\//);
+    expect(Buffer.from(await agreementPdf(signed)).subarray(0, 5).toString()).toBe("%PDF-");
+    // A new signer name without a new drawing falls back to the typed name.
+    await s.admin.agreements.templates.save({ ...base, signerName: "Casey Ward" });
+    const b = createAgreement({ eventId: s.event.id, templateId: t.id, kind: "sponsor", signerEmail: "y@example.com", values: {} });
+    const signedB = await signAgreement(b.code, { name: "Alex Morgan", title: "", signaturePng: PNG }, { sendCopy: false });
+    const copyB = await caller(null).agreements.public.copy({ code: signedB.code });
+    expect(copyB.signatures[1]).toMatchObject({ name: "Casey Ward", drawn: false, pngUrl: null });
   });
 
   it("rejects a bad signature image and an empty name", async () => {

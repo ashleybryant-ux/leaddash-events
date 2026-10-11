@@ -4,7 +4,7 @@ import { Link, useLocation } from "wouter";
 import QRCode from "qrcode";
 import { trpc, type RouterOutputs } from "../../lib/trpc";
 import { AdminPage, useAdmin, useAdminEvent } from "../../shells/AdminShell";
-import { Avatar, EditSection, Empty, ErrorNote, Field, Kpi, PageLoading, Pill, QR, THead, UploadButton, confirmAction } from "../../ui/components";
+import { Avatar, EditSection, Empty, ErrorNote, Field, PageLoading, Pill, QR, THead, UploadButton, confirmAction, NumStrip } from "../../ui/components";
 import { errorText, toast } from "../../ui/toast";
 import { fmtDate, fmtDates, fmtRange, fmtTime, fmtWhenTime } from "@shared/format";
 import { SessionSlides, SessionsTabs, SlidesActions, SlidesTab, inSessionsTab } from "./SessionSlides";
@@ -13,9 +13,9 @@ import { AgreementPill, SendAgreementsButton, SpeakerAgreementSection, SpeakerTa
 /* ---------------- Shared bits ---------------- */
 
 /** Label over value pairs inside an expanded row or a read-only section. */
-export function Facts({ items }: { items: { label: string; value: ReactNode; wide?: boolean }[] }) {
+export function Facts({ items, cols = 3 }: { items: { label: string; value: ReactNode; wide?: boolean }[]; cols?: 2 | 3 }) {
   return (
-    <div className="grid-3">
+    <div className={cols === 2 ? "grid-2" : "grid-3"} style={cols === 2 ? { gap: "12px 16px" } : undefined}>
       {items.map((i) => (
         <div key={i.label} className={`col${i.wide ? " span-all" : ""}`} style={{ gap: 2 }}>
           <span className="small muted strong">{i.label}</span>
@@ -264,12 +264,14 @@ export function AdminSessionsScreen() {
         <ErrorNote error={q.error} />
       ) : (
         <>
-          <div className="grid-4">
-            <Kpi label="Attendees" value={q.data!.kpis.attendees.toLocaleString()} />
-            <Kpi label="Sessions" value={q.data!.kpis.sessions.toLocaleString()} />
-            <Kpi label="Check-ins" value={q.data!.kpis.checkins.toLocaleString()} />
-            <Kpi label="Certificates issued" value={q.data!.kpis.certificates.toLocaleString()} />
-          </div>
+          <NumStrip
+            items={[
+              { label: "Attendees", value: q.data!.kpis.attendees.toLocaleString() },
+              { label: "Sessions", value: q.data!.kpis.sessions.toLocaleString() },
+              { label: "Check-ins", value: q.data!.kpis.checkins.toLocaleString() },
+              { label: "Certificates issued", value: q.data!.kpis.certificates.toLocaleString() },
+            ]}
+          />
           {adding ? (
             <div className="card card-pad col gap-14">
               <span className="editor-title">New session</span>
@@ -375,8 +377,7 @@ function SessionPanel({ sessionId, inRow }: { sessionId: number; inRow?: boolean
   const refresh = () => Promise.all([utils.program.sessions.adminGet.invalidate({ eventId: event.id, sessionId }), utils.program.sessions.adminList.invalidate({ eventId: event.id })]);
   const checkinUrl = `${window.location.origin}/e/${d.slug}/checkin/${s.id}?code=${s.checkInCode}`;
 
-  return (
-    <div className="col gap-16">
+  const details = (
       <Section
         canEdit={canEdit}
         title="Session details"
@@ -391,6 +392,7 @@ function SessionPanel({ sessionId, inRow }: { sessionId: number; inRow?: boolean
         }}
         view={
           <Facts
+            cols={inRow ? 3 : 2}
             items={[
               { label: d.speakers.length > 1 ? "Speakers" : "Presenter", value: d.speakers.map((p) => (p.role === "presenter" || d.speakers.length === 1 ? p.name : `${p.name} (${roleLabel(p.role)})`)).join(", ") },
               { label: "Time", value: `${fmtDate(s.date)}, ${fmtRange(s.startTime, s.endTime)}` },
@@ -412,12 +414,33 @@ function SessionPanel({ sessionId, inRow }: { sessionId: number; inRow?: boolean
         }
         edit={<SessionFields f={form} set={setF} forms={d.forms} templates={d.templates} startDate={event.startDate} endDate={event.endDate} />}
       />
+  );
+  const speakers = <SessionSpeakers sessionId={s.id} speakers={d.speakers} all={d.allSpeakers} canEdit={canEdit} onSaved={refresh} />;
+  const slides = s.kind !== "break" && s.kind !== "meal" ? <SessionSlides eventId={event.id} sessionId={s.id} canEdit={canEdit} /> : null;
+
+  // The session's own page: details and speakers on the left, slides and handouts on the right.
+  if (!inRow) {
+    return (
+      <div className="session-split">
+        <div className="card card-pad col gap-16">
+          {details}
+          <div className="divider" />
+          {speakers}
+        </div>
+        {slides ? <div className="card card-pad col gap-16">{slides}</div> : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="col gap-16">
+      {details}
       <div className="divider" />
-      <SessionSpeakers sessionId={s.id} speakers={d.speakers} all={d.allSpeakers} canEdit={canEdit} onSaved={refresh} />
-      {s.kind !== "break" && s.kind !== "meal" ? (
+      {speakers}
+      {slides ? (
         <>
           <div className="divider" />
-          <SessionSlides eventId={event.id} sessionId={s.id} canEdit={canEdit} />
+          {slides}
         </>
       ) : null}
       {inRow ? (
@@ -585,15 +608,15 @@ export function AdminSessionEditScreen({ sessionId }: { sessionId: number }) {
         </>
       }
     >
-      <div className="grid-4">
-        <Kpi label="Scheduled" value={s.scheduled.toLocaleString()} />
-        <Kpi label="Checked in" value={s.checkedIn.toLocaleString()} />
-        <Kpi label="Evaluations" value={s.evaluations.toLocaleString()} />
-        <Kpi label="Seats left" value={s.capacity ? Math.max(0, s.capacity - s.scheduled).toLocaleString() : "No limit"} />
-      </div>
-      <div className="card card-pad">
-        <SessionPanel sessionId={sessionId} />
-      </div>
+      <NumStrip
+        items={[
+          { label: "Scheduled", value: s.scheduled.toLocaleString() },
+          { label: "Checked in", value: s.checkedIn.toLocaleString() },
+          { label: "Evaluations", value: s.evaluations.toLocaleString() },
+          { label: "Seats left", value: s.capacity ? Math.max(0, s.capacity - s.scheduled).toLocaleString() : "No limit", warn: !!s.capacity && s.capacity - s.scheduled <= 0 },
+        ]}
+      />
+      <SessionPanel sessionId={sessionId} />
       <div className="card card-pad col gap-12">
         <div className="row-between">
           <span className="h3" style={{ fontSize: 14 }}>Room check-in QR</span>
@@ -742,6 +765,8 @@ export function AdminSpeakersScreen() {
   const agr = useSpeakerAgreements(event.id);
   const slides = trpc.program.slides.overview.useQuery({ eventId: event.id });
   const noSlides = new Set((slides.data?.rows ?? []).filter((r) => !r.files.length).map((r) => r.id));
+  const slideFiles = slides.data ? new Map(slides.data.rows.map((r) => [r.id, r.files.length])) : null;
+  const [editing, setEditing] = useState(false);
   const missingSlides = (s: { sessions: { id: number }[] }) => s.sessions.some((x) => noSlides.has(x.id));
   const [spTab, setSpTab] = useState<string>("all");
   return (
@@ -812,18 +837,31 @@ export function AdminSpeakersScreen() {
                     <div className="clip">{s.sessions[0]?.title || <span className="muted">No session</span>}</div>
                     <div><AgreementPill row={agr.byId.get(s.id)} /></div>
                     <div><WelcomePill row={agr.byId.get(s.id)} /></div>
-                    <button type="button" className={`btn btn-sm btn-w${isOpen ? " btn-solid" : ""}`} onClick={() => setOpen(isOpen ? null : s.id)}>
-                      {isOpen ? "Close" : "Details"}
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-w"
+                      onClick={() => {
+                        setOpen(isOpen ? null : s.id);
+                        setEditing(false);
+                      }}
+                    >
+                      {isOpen ? "Close" : "Open"}
                     </button>
                   </div>
                   {isOpen ? (
                     <div className="editor">
-                      <div className="sp-expand one">
-                        <SpeakerAgreementSection eventId={event.id} speakerId={s.id} email={s.email} />
-                        <section className="sp-sec" style={{ padding: "16px 18px" }}>
-                          <SpeakerPanel speakerId={s.id} inRow onDeleted={() => setOpen(null)} />
-                        </section>
-                      </div>
+                      {editing ? (
+                        <div className="sp-expand one">
+                          <section className="sp-sec" style={{ padding: "16px 18px" }}>
+                            <SpeakerPanel speakerId={s.id} inRow startEditing onDone={() => setEditing(false)} onDeleted={() => setOpen(null)} />
+                          </section>
+                        </div>
+                      ) : (
+                        <div className="sp-expand">
+                          <SpeakerSummary s={s} slideFiles={slideFiles} canEdit={canEdit} onEdit={() => setEditing(true)} />
+                          <SpeakerAgreementSection eventId={event.id} speakerId={s.id} email={s.email} />
+                        </div>
+                      )}
                     </div>
                   ) : null}
                 </div>
@@ -837,7 +875,53 @@ export function AdminSpeakersScreen() {
   );
 }
 
-function SpeakerPanel({ speakerId, inRow, onDeleted }: { speakerId: number; inRow?: boolean; onDeleted: () => void }) {
+type SpeakerListRow = RouterOutputs["program"]["speakers"]["adminList"][number];
+
+/** The Speaker card in an open speaker row: a short summary, and Edit opens the full speaker editor in place. */
+function SpeakerSummary({ s, slideFiles, canEdit, onEdit }: { s: SpeakerListRow; slideFiles: Map<number, number> | null; canEdit: boolean; onEdit: () => void }) {
+  const first = s.sessions[0];
+  const photo = !!s.headshotFileId;
+  const bio = !!s.bio.trim();
+  const files = slideFiles ? s.sessions.reduce((n, x) => n + (slideFiles.get(x.id) ?? 0), 0) : null;
+  return (
+    <section className="sp-sec">
+      <div className="sp-sh">
+        <b>Speaker</b>
+        {canEdit ? (
+          <button type="button" className="btn btn-sm btn-w" onClick={onEdit}>
+            Edit
+          </button>
+        ) : null}
+      </div>
+      <div className="sp-kv">
+        <span className="k">Email</span>
+        <span className="clip">{s.email || <span className="muted">Not set</span>}</span>
+        <span className="k">{s.sessions.length > 1 ? "Sessions" : "Session"}</span>
+        <span>
+          {first ? (
+            <>
+              {fmtDate(first.date)} at {fmtTime(first.startTime)}
+              {first.room ? ` · ${first.room}` : ""}
+              {s.sessions.length > 1 ? <span className="muted"> and {s.sessions.length - 1} more</span> : null}
+            </>
+          ) : (
+            <span className="muted">No session</span>
+          )}
+        </span>
+        <span className="k">Bio and photo</span>
+        <span>{photo && bio ? "Added" : photo ? "Bio missing" : bio ? "Photo missing" : "Missing"}</span>
+        {files !== null && s.sessions.length ? (
+          <>
+            <span className="k">Slides</span>
+            <span>{files ? `${files} ${files === 1 ? "file" : "files"}` : "Not uploaded"}</span>
+          </>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function SpeakerPanel({ speakerId, inRow, onDeleted, startEditing, onDone }: { speakerId: number; inRow?: boolean; onDeleted: () => void; startEditing?: boolean; onDone?: () => void }) {
   const event = useAdminEvent();
   const { can } = useAdmin();
   const canEdit = can("speakers", "edit");
@@ -863,7 +947,11 @@ function SpeakerPanel({ speakerId, inRow, onDeleted }: { speakerId: number; inRo
         canEdit={canEdit}
         title="Speaker profile"
         saving={update.isPending}
-        onCancel={() => setF(null)}
+        startOpen={startEditing}
+        onCancel={() => {
+          setF(null);
+          onDone?.();
+        }}
         actions={
           <>
             {inRow ? <Link href={`/admin/e/${event.id}/speakers/${s.id}`} className="btn btn-sm btn-w">Full page</Link> : null}
@@ -891,6 +979,7 @@ function SpeakerPanel({ speakerId, inRow, onDeleted }: { speakerId: number; inRo
           setF(null);
           await refresh();
           toast("Speaker saved");
+          onDone?.();
         }}
         view={
           <div className="row gap-16" style={{ alignItems: "flex-start" }}>

@@ -12,11 +12,11 @@
  */
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { and, eq, gt, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { lookOf } from "@shared/brand";
 import { fmtDate, fmtMoney } from "@shared/format";
 import { protectedProcedure, publicProcedure, router } from "../../_core/trpc";
-import { getDb, schema } from "../../_core/db";
+import { getDb, getSqlite, schema } from "../../_core/db";
 import { audit, getEventBySlug, notFound, requireArea } from "../../_core/access";
 import { ENV } from "../../_core/env";
 import { fileUrl, saveFile } from "../../_core/files";
@@ -36,8 +36,12 @@ import {
   chargeBalance,
   handleVendorDispute,
   handleVendorPaymentIntent,
+  handleVendorRefund,
+  holdLapsed,
   methodLabel,
   orgNoticeTo,
+  orgVendorNotice,
+  overpaidNotice,
   paymentFailedEmails,
   reasonWords,
   sendVendorPayEmail,
@@ -101,18 +105,45 @@ function payOptions(page: VendorCheckoutPage, today: string): PayOption[] {
 
 const PENDING_HOLD_MS = 60 * 60_000;
 
-/** Checkouts waiting on Stripe from the last hour (they hold their package and add-ons). */
+/** Checkouts waiting on Stripe from the last hour, counted from when Pay was pressed (they hold their package and add-ons). */
 function heldCheckouts(eventId: number, exceptId?: number) {
+  const since = Date.now() - PENDING_HOLD_MS;
   return getDb()
     .select()
     .from(schema.vendorCheckouts)
-    .where(and(eq(schema.vendorCheckouts.eventId, eventId), eq(schema.vendorCheckouts.status, "pending"), gt(schema.vendorCheckouts.createdAt, new Date(Date.now() - PENDING_HOLD_MS))))
+    .where(and(eq(schema.vendorCheckouts.eventId, eventId), eq(schema.vendorCheckouts.status, "pending")))
     .all()
-    .filter((c) => c.id !== exceptId && !c.vendorId);
+    .filter((c) => c.id !== exceptId && !c.vendorId && new Date(c.pendingAt ?? c.createdAt ?? 0).getTime() > since);
 }
 
+/** Sponsors and exhibitors that count toward sold out: not cancelled, and not an invoice hold that ended with nothing paid. */
 function liveVendors(eventId: number) {
-  return getDb().select().from(schema.vendors).where(eq(schema.vendors.eventId, eventId)).all().filter((v) => v.status !== "cancelled");
+  const db = getDb();
+  const ev = db.select().from(schema.events).where(eq(schema.events.id, eventId)).get();
+  const today = ev ? eventToday(ev) : "";
+  const payments = db.select().from(schema.vendorPayments).where(eq(schema.vendorPayments.eventId, eventId)).all();
+  return db
+    .select()
+    .from(schema.vendors)
+    .where(eq(schema.vendors.eventId, eventId))
+    .all()
+    .filter((v) => v.status !== "cancelled" && !holdLapsed(v, payments.filter((p) => p.vendorId === v.id), today));
+}
+
+/** What a finished checkout would oversell (sold to sponsors and exhibitors already, not counting holds). Empty when it fits. */
+function oversold(c: VendorCheckout) {
+  const db = getDb();
+  const vendors = liveVendors(c.eventId);
+  const out: string[] = [];
+  const pkg = db.select().from(schema.vendorPackages).where(eq(schema.vendorPackages.id, c.packageId)).get();
+  if (pkg && pkg.quantity != null && vendors.filter((v) => v.packageId === pkg.id).length >= pkg.quantity) out.push(pkg.name);
+  for (const line of c.buyer.addons.filter((a) => a.qty > 0)) {
+    const a = db.select().from(schema.vendorAddons).where(eq(schema.vendorAddons.id, line.addonId)).get();
+    if (!a || a.quantity == null) continue;
+    const sold = vendors.reduce((n, v) => n + v.addons.filter((l) => l.addonId === a.id).reduce((m, l) => m + l.qty, 0), 0);
+    if (sold + line.qty > a.quantity) out.push(a.name);
+  }
+  return out;
 }
 
 /** What a package includes, as the lines on its card. */
@@ -341,7 +372,16 @@ const splitName = (name: string) => {
   return { firstName: parts[0] ?? "", lastName: parts.slice(1).join(" ") };
 };
 
-/** Pass holders (sponsor) or booth staff (exhibitor) named at checkout, registered on the package's pass ticket. */
+type Already = { name: string; email: string; why: string };
+
+/**
+ * Pass holders (sponsor) or booth staff (exhibitor) named at checkout,
+ * registered on the package's pass ticket. Only emails not yet on the event
+ * get a new registration. Someone already registered keeps their ticket,
+ * status and organization; they are linked to this vendor only when they are
+ * not linked to one yet. Everyone already on the event is returned so the
+ * organization can be told (alreadyOnEventNotice).
+ */
 function addPassPeople(v: Vendor, people: { name: string; email: string }[]) {
   const db = getDb();
   const pkg = v.packageId ? db.select().from(schema.vendorPackages).where(eq(schema.vendorPackages.id, v.packageId)).get() : undefined;
@@ -353,24 +393,32 @@ function addPassPeople(v: Vendor, people: { name: string; email: string }[]) {
   const kind = v.kind === "exhibitor" ? ("vendor" as const) : ("sponsor" as const);
   let added = 0;
   const emails: string[] = [];
-  for (const p of people.slice(0, open)) {
+  const already: Already[] = [];
+  for (const p of people) {
+    if (added >= open) break;
     const email = p.email.trim().toLowerCase();
     if (!email) continue;
     const { firstName, lastName } = splitName(p.name);
     const existing = db.select().from(schema.attendees).where(and(eq(schema.attendees.eventId, v.eventId), eq(schema.attendees.email, email))).get();
-    if (existing && existing.status === "registered") {
-      if (!existing.vendorId) {
-        db.update(schema.attendees).set({ vendorId: v.id, organization: existing.organization || v.company }).where(eq(schema.attendees.id, existing.id)).run();
+    if (existing) {
+      if (existing.vendorId === v.id) continue;
+      if (existing.status === "registered" && !existing.vendorId) {
+        db.update(schema.attendees).set({ vendorId: v.id }).where(eq(schema.attendees.id, existing.id)).run();
         added++;
         emails.push(email);
+        already.push({ name: p.name, email, why: "already registered, now linked to this pass" });
+      } else {
+        const why = existing.status === "registered" ? "already registered with another sponsor or exhibitor, not changed" : existing.status === "cancelled" ? "has a cancelled registration, not changed" : "has a registration waiting on payment, not changed";
+        already.push({ name: p.name, email, why });
       }
       continue;
     }
     const u = db.select().from(schema.users).where(eq(schema.users.email, email)).get();
-    const values = { firstName, lastName, organization: v.company, kind, vendorId: v.id, ticketTypeId: ticket?.id ?? null, status: "registered" as const };
-    const row = existing
-      ? db.update(schema.attendees).set(values).where(eq(schema.attendees.id, existing.id)).returning().get()
-      : db.insert(schema.attendees).values({ ...values, eventId: v.eventId, email, qrToken: randomToken(12), userId: u?.id ?? null }).returning().get();
+    const row = db
+      .insert(schema.attendees)
+      .values({ firstName, lastName, organization: v.company, kind, vendorId: v.id, ticketTypeId: ticket?.id ?? null, status: "registered", eventId: v.eventId, email, qrToken: randomToken(12), userId: u?.id ?? null })
+      .returning()
+      .get();
     if (ticket) {
       db.insert(schema.orders)
         .values({ eventId: v.eventId, attendeeId: row.id, email, ticketTypeId: ticket.id, subtotalCents: 0, amountCents: 0, status: "free", method: "sponsor_pass", paidAt: new Date(), buyer: { firstName, lastName, email } })
@@ -385,10 +433,18 @@ function addPassPeople(v: Vendor, people: { name: string; email: string }[]) {
     db.update(schema.vendors).set({ boothStaff: staff }).where(eq(schema.vendors.id, v.id)).run();
     syncBoothStaff({ ...fresh, boothStaff: staff });
   }
-  return added;
+  return { added, already };
 }
 
-/** Creates the sponsor or exhibitor from a checkout. */
+/** Tells the organization which named pass holders were already on the event (their registration was left as it was). */
+async function alreadyOnEventNotice(v: Vendor, already: Already[]) {
+  if (!already.length) return;
+  const word = v.kind === "exhibitor" ? "booth staff" : "pass holders";
+  const list = already.map((a) => `${a.name || a.email} (${a.email}): ${a.why}`).join("; ");
+  await orgVendorNotice(v, `${word} already registered for ${v.company}`, "Already registered", `${v.company} named ${word} who were already on the event: ${list}.`);
+}
+
+/** Creates the sponsor or exhibitor from a checkout (synchronous, so it can run inside a transaction). */
 function createVendor(c: VendorCheckout, extra: Partial<typeof schema.vendors.$inferInsert>) {
   const db = getDb();
   const pkg = db.select().from(schema.vendorPackages).where(eq(schema.vendorPackages.id, c.packageId)).get()!;
@@ -428,8 +484,8 @@ function createVendor(c: VendorCheckout, extra: Partial<typeof schema.vendors.$i
     .returning()
     .get();
   if (c.agreementId) db.update(schema.agreements).set({ vendorId: v.id }).where(eq(schema.agreements.id, c.agreementId)).run();
-  addPassPeople(v, b.people);
-  return db.select().from(schema.vendors).where(eq(schema.vendors.id, v.id)).get()!;
+  const { already } = addPassPeople(v, b.people);
+  return { vendor: db.select().from(schema.vendors).where(eq(schema.vendors.id, v.id)).get()!, already };
 }
 
 function signedAgreementOf(c: VendorCheckout) {
@@ -515,18 +571,34 @@ async function checkoutEmails(c: VendorCheckout, v: Vendor, paid: { cents: numbe
   }
 }
 
+/** Tells the organization a paid order went past what was left of a package or add-on. */
+async function oversoldNotice(v: Vendor, names: string[]) {
+  if (!names.length) return;
+  const text = `${v.company} paid for ${names.join(" and ")} after the last one was sold. The order and payment are recorded. Move them to another ${v.kind === "exhibitor" ? "booth" : "package"}, raise how many can be sold, or refund them in Stripe.`;
+  await orgVendorNotice(v, `${names[0]} oversold`, "Sold more than you have", text);
+}
+
+/** The invoice due date the agreement states: the checkout's start plus the hold days (same base as the agreement text). */
+function invoiceDueBy(c: VendorCheckout, holdDays: number) {
+  const created = new Date(c.createdAt ?? Date.now());
+  return new Date(created.getTime() + holdDays * 86_400_000).toISOString().slice(0, 10);
+}
+
 /**
  * A finished Stripe Checkout Session: creates the vendor, the passes and the
  * payment (paid, or pending while a bank payment clears), saves the payment
- * method for the rest of a deposit, and sends the emails. Safe to call more
- * than once (Stripe retries; the confirmation page also calls it).
+ * method for the rest of a deposit, and sends the emails. Stripe is asked
+ * first; then the checkout is claimed and the vendor, passes and payment are
+ * written in one transaction, so a crash leaves either nothing (a retry
+ * finishes it) or the whole order. Safe to call more than once (Stripe
+ * retries; the confirmation page also calls it).
  */
 export async function completeCheckout(checkoutId: number, s: Pick<Stripe.Checkout.Session, "id" | "payment_status" | "payment_intent" | "customer"> & { amount_total?: number | null }) {
   const db = getDb();
   const c = db.select().from(schema.vendorCheckouts).where(eq(schema.vendorCheckouts.id, checkoutId)).get();
   if (!c) return null;
-  const won = db.update(schema.vendorCheckouts).set({ status: "paid" }).where(and(eq(schema.vendorCheckouts.id, c.id), inArray(schema.vendorCheckouts.status, ["started", "pending", "expired"]))).run().changes === 1;
-  if (!won) return db.select().from(schema.vendors).where(eq(schema.vendors.id, c.vendorId ?? 0)).get() ?? null;
+  const existing = () => db.select().from(schema.vendors).where(eq(schema.vendors.id, c.vendorId ?? 0)).get() ?? null;
+  if (c.vendorId) return existing();
   const piId = typeof s.payment_intent === "string" ? s.payment_intent : s.payment_intent?.id ?? null;
   const customer = typeof s.customer === "string" ? s.customer : s.customer?.id ?? null;
   let pm: Stripe.PaymentMethod | null = null;
@@ -545,36 +617,79 @@ export async function completeCheckout(checkoutId: number, s: Pick<Stripe.Checko
   // What Stripe actually charged is what counts (the session is the record of the amount).
   const charged = typeof s.amount_total === "number" ? s.amount_total : c.dueTodayCents;
   const deposit = c.payOption === "deposit" && c.totalCents > charged;
-  const v = createVendor(c, {
-    stripeCustomerId: customer,
-    stripePaymentMethodId: pm?.id ?? null,
-    payMethodLabel: m.label,
-    ...(deposit ? { nextChargeCents: c.totalCents - charged, nextChargeOn: page.balanceDueOn ?? addDays(eventToday(ev), 30) } : {}),
-  });
-  db.insert(schema.vendorPayments)
-    .values({ eventId: c.eventId, vendorId: v.id, amountCents: charged, method: m.method, status: paidNow ? "paid" : "pending", purpose: deposit ? "deposit" : "full", paidOn: eventToday(ev), reference: m.label, stripeAccountId: c.stripeAccountId, stripeSessionId: s.id, stripePaymentIntentId: piId })
-    .run();
-  syncPaid(v.id);
-  db.update(schema.vendorCheckouts).set({ vendorId: v.id }).where(eq(schema.vendorCheckouts.id, c.id)).run();
+  const done = getSqlite().transaction(() => {
+    const won = db
+      .update(schema.vendorCheckouts)
+      .set({ status: "paid" })
+      .where(and(eq(schema.vendorCheckouts.id, c.id), isNull(schema.vendorCheckouts.vendorId), inArray(schema.vendorCheckouts.status, ["started", "pending", "expired", "paid"])))
+      .run().changes === 1;
+    if (!won) return null;
+    const over = oversold(c);
+    const { vendor, already } = createVendor(c, {
+      stripeCustomerId: customer,
+      stripePaymentMethodId: pm?.id ?? null,
+      payMethodLabel: m.label,
+      ...(deposit ? { nextChargeCents: c.totalCents - charged, nextChargeOn: page.balanceDueOn ?? addDays(eventToday(ev), 30) } : {}),
+    });
+    db.insert(schema.vendorPayments)
+      .values({ eventId: c.eventId, vendorId: vendor.id, amountCents: charged, method: m.method, status: paidNow ? "paid" : "pending", purpose: deposit ? "deposit" : "full", paidOn: eventToday(ev), reference: m.label, stripeAccountId: c.stripeAccountId, stripeSessionId: s.id, stripePaymentIntentId: piId })
+      .run();
+    syncPaid(vendor.id);
+    db.update(schema.vendorCheckouts).set({ vendorId: vendor.id }).where(eq(schema.vendorCheckouts.id, c.id)).run();
+    return { vendorId: vendor.id, over, already };
+  })();
+  if (!done) return db.select().from(schema.vendors).where(eq(schema.vendors.id, db.select().from(schema.vendorCheckouts).where(eq(schema.vendorCheckouts.id, c.id)).get()?.vendorId ?? 0)).get() ?? null;
+  const fresh = () => db.select().from(schema.vendors).where(eq(schema.vendors.id, done.vendorId)).get()!;
   try {
-    await sendVendorWelcome(v.id);
+    await sendVendorWelcome(done.vendorId);
   } catch (err) {
     console.error("[vendor checkout] welcome:", err);
   }
-  await checkoutEmails(c, db.select().from(schema.vendors).where(eq(schema.vendors.id, v.id)).get()!, { cents: charged, pending: !paidNow });
-  return db.select().from(schema.vendors).where(eq(schema.vendors.id, v.id)).get()!;
+  await checkoutEmails(c, fresh(), { cents: charged, pending: !paidNow });
+  await oversoldNotice(fresh(), done.over);
+  await alreadyOnEventNotice(fresh(), done.already);
+  return fresh();
+}
+
+/**
+ * A second paid session on a checkout that already made its vendor (an old
+ * session that could still be paid): the money is recorded on the vendor,
+ * never dropped, and the organization is told a refund is needed.
+ */
+async function recordExtraSessionPayment(c: VendorCheckout, s: Stripe.Checkout.Session) {
+  const db = getDb();
+  const v = db.select().from(schema.vendors).where(eq(schema.vendors.id, c.vendorId ?? 0)).get();
+  if (!v) return "ignored";
+  const ev = db.select().from(schema.events).where(eq(schema.events.id, v.eventId)).get()!;
+  const piId = typeof s.payment_intent === "string" ? s.payment_intent : s.payment_intent?.id ?? null;
+  const before = vendorMoney(v, db.select().from(schema.vendorPayments).where(eq(schema.vendorPayments.vendorId, v.id)).all()).owedCents;
+  const amount = s.amount_total ?? 0;
+  const inserted = db
+    .insert(schema.vendorPayments)
+    .values({ eventId: v.eventId, vendorId: v.id, amountCents: amount, method: "card", status: s.payment_status === "paid" ? "paid" : "pending", purpose: "full", paidOn: eventToday(ev), stripeAccountId: c.stripeAccountId, stripeSessionId: s.id, stripePaymentIntentId: piId })
+    .onConflictDoNothing()
+    .run().changes;
+  if (!inserted) return "ignored";
+  syncPaid(v.id);
+  if (amount > before) await overpaidNotice(v, amount, before);
+  return "vendor_extra_payment";
 }
 
 /** The invoice choice (and free packages): the vendor is created now and the package is held. */
 async function completeWithoutPayment(c: VendorCheckout) {
   const db = getDb();
-  const won = db.update(schema.vendorCheckouts).set({ status: "invoice" }).where(and(eq(schema.vendorCheckouts.id, c.id), eq(schema.vendorCheckouts.status, "started"))).run().changes === 1;
-  if (!won) return null;
-  const ev = db.select().from(schema.events).where(eq(schema.events.id, c.eventId)).get()!;
   const page = vendorPageFor(c.eventId, c.kind);
   const free = c.totalCents === 0;
-  const v = createVendor(c, free ? {} : { holdUntil: addDays(eventToday(ev), page.invoiceHoldDays) });
-  db.update(schema.vendorCheckouts).set({ vendorId: v.id }).where(eq(schema.vendorCheckouts.id, c.id)).run();
+  const done = getSqlite().transaction(() => {
+    const won = db.update(schema.vendorCheckouts).set({ status: "invoice" }).where(and(eq(schema.vendorCheckouts.id, c.id), eq(schema.vendorCheckouts.status, "started"))).run().changes === 1;
+    if (!won) return null;
+    // The same due date the agreement states (checkout start plus the hold days).
+    const made = createVendor(c, free ? {} : { holdUntil: invoiceDueBy(c, page.invoiceHoldDays) });
+    db.update(schema.vendorCheckouts).set({ vendorId: made.vendor.id }).where(eq(schema.vendorCheckouts.id, c.id)).run();
+    return made;
+  })();
+  if (!done) return null;
+  const v = done.vendor;
   if (free) {
     try {
       await sendVendorWelcome(v.id);
@@ -589,6 +704,7 @@ async function completeWithoutPayment(c: VendorCheckout) {
     }
   }
   await checkoutEmails(c, v, free ? { cents: 0, pending: false } : null);
+  await alreadyOnEventNotice(v, done.already);
   return v;
 }
 
@@ -653,6 +769,9 @@ async function createBalanceSession(ev: EventRow, v: Vendor, owed: number, accou
     },
     { stripeAccount: accountId, idempotencyKey: `leaddash-vendor-pay-${v.id}-${owed}-${Date.now()}` }
   );
+  // The scheduled charge waits while this session can be paid.
+  const expiresAt = new Date((session.expires_at ?? Math.floor(Date.now() / 1000) + 60 * 60) * 1000);
+  getDb().update(schema.vendors).set({ paySessionId: session.id, paySessionExpiresAt: expiresAt }).where(eq(schema.vendors.id, v.id)).run();
   if (!session.client_secret) throw new Error("Stripe returned no client secret");
   return session.client_secret;
 }
@@ -692,7 +811,14 @@ export async function completeSetup(vendorId: number, s: Pick<Stripe.Checkout.Se
   return "vendor_method";
 }
 
-/** A paid pay-link session: records the payment, saves the new method, and clears the scheduled charge. Safe to call twice. */
+/**
+ * A paid pay-link session: records the payment, saves the new method, and
+ * clears the scheduled charge. The payment row is claimed before Stripe is
+ * asked anything (one row per session, by a unique index), so the webhook and
+ * the buyer coming back to the page can never both record it. A payment for
+ * more than was owed is still recorded and the organization is told to refund
+ * the difference. Safe to call twice.
+ */
 export async function completeBalance(vendorId: number, s: Pick<Stripe.Checkout.Session, "id" | "payment_status" | "payment_intent" | "customer" | "amount_total">, account: string) {
   const db = getDb();
   const v = db.select().from(schema.vendors).where(eq(schema.vendors.id, vendorId)).get();
@@ -702,6 +828,20 @@ export async function completeBalance(vendorId: number, s: Pick<Stripe.Checkout.
   if (db.select().from(schema.vendorPayments).where(eq(schema.vendorPayments.stripeSessionId, s.id)).get()) return "ignored";
   const piId = typeof s.payment_intent === "string" ? s.payment_intent : s.payment_intent?.id ?? null;
   const customer = typeof s.customer === "string" ? s.customer : s.customer?.id ?? null;
+  const amount = s.amount_total ?? 0;
+  const owedBefore = vendorMoney(v, db.select().from(schema.vendorPayments).where(eq(schema.vendorPayments.vendorId, v.id)).all()).owedCents;
+  const row = db
+    .insert(schema.vendorPayments)
+    .values({ eventId: v.eventId, vendorId: v.id, amountCents: amount, method: "card", status: s.payment_status === "paid" ? "paid" : "pending", purpose: "balance", paidOn: eventToday(ev), stripeAccountId: account, stripeSessionId: s.id, stripePaymentIntentId: piId })
+    .onConflictDoNothing()
+    .returning()
+    .get();
+  if (!row) return "ignored";
+  db.update(schema.vendors)
+    .set({ holdUntil: null, nextChargeCents: 0, nextChargeOn: null, nextChargeReminderAt: null, nextChargeError: "", ...(customer ? { stripeCustomerId: customer } : {}), ...(v.paySessionId === s.id ? { paySessionId: null, paySessionExpiresAt: null } : {}) })
+    .where(eq(schema.vendors.id, v.id))
+    .run();
+  syncPaid(v.id);
   let pm: Stripe.PaymentMethod | null = null;
   if (piId) {
     try {
@@ -711,18 +851,18 @@ export async function completeBalance(vendorId: number, s: Pick<Stripe.Checkout.
       console.error("[vendor pay] payment method lookup:", err);
     }
   }
-  const m = methodLabel(pm);
-  const inserted = db
-    .insert(schema.vendorPayments)
-    .values({ eventId: v.eventId, vendorId: v.id, amountCents: s.amount_total ?? 0, method: m.method, status: s.payment_status === "paid" ? "paid" : "pending", purpose: "balance", paidOn: eventToday(ev), reference: m.label, stripeAccountId: account, stripeSessionId: s.id, stripePaymentIntentId: piId })
-    .onConflictDoNothing()
-    .run().changes;
-  if (!inserted) return "ignored";
-  db.update(schema.vendors)
-    .set({ holdUntil: null, nextChargeCents: 0, nextChargeOn: null, nextChargeReminderAt: null, nextChargeError: "", ...(customer ? { stripeCustomerId: customer } : {}), ...(pm ? { stripePaymentMethodId: pm.id, payMethodLabel: m.label } : {}) })
-    .where(eq(schema.vendors.id, v.id))
-    .run();
-  syncPaid(v.id);
+  if (pm) {
+    const m = methodLabel(pm);
+    db.update(schema.vendorPayments).set({ method: m.method, reference: m.label }).where(eq(schema.vendorPayments.id, row.id)).run();
+    db.update(schema.vendors).set({ stripePaymentMethodId: pm.id, payMethodLabel: m.label }).where(eq(schema.vendors.id, v.id)).run();
+  }
+  if (amount > owedBefore) {
+    try {
+      await overpaidNotice(v, amount, owedBefore);
+    } catch (err) {
+      console.error("[vendor pay] overpaid notice:", err);
+    }
+  }
   try {
     await sendVendorWelcome(v.id);
   } catch (err) {
@@ -747,7 +887,23 @@ export async function handleVendorStripeEvent(event: Stripe.Event): Promise<stri
     case "checkout.session.async_payment_failed":
     case "checkout.session.expired": {
       const s = event.data.object as Stripe.Checkout.Session;
-      const c = db.select().from(schema.vendorCheckouts).where(eq(schema.vendorCheckouts.stripeSessionId, s.id)).get();
+      let c = db.select().from(schema.vendorCheckouts).where(eq(schema.vendorCheckouts.stripeSessionId, s.id)).get();
+      if (!c && event.type !== "checkout.session.expired") {
+        // A session the checkout no longer points to (an older one, or one whose start timed out): found by its metadata.
+        const byMeta = Number(s.metadata?.leaddash_vendor_checkout_id ?? 0);
+        const other = byMeta ? db.select().from(schema.vendorCheckouts).where(eq(schema.vendorCheckouts.id, byMeta)).get() : undefined;
+        if (other) {
+          if (other.stripeAccountId !== account) return "ignored";
+          if (other.vendorId) {
+            const extra = db.select().from(schema.vendorPayments).where(eq(schema.vendorPayments.stripeSessionId, s.id)).get();
+            if (extra) return event.type === "checkout.session.completed" ? "ignored" : settleSessionPayment(event.type, extra, s);
+            if (event.type === "checkout.session.async_payment_failed") return "ignored";
+            return recordExtraSessionPayment(other, event.type === "checkout.session.async_payment_succeeded" ? { ...s, payment_status: "paid" } : s);
+          }
+          db.update(schema.vendorCheckouts).set({ stripeSessionId: s.id }).where(eq(schema.vendorCheckouts.id, other.id)).run();
+          c = { ...other, stripeSessionId: s.id };
+        }
+      }
       if (c) {
         if (c.stripeAccountId !== account) return "ignored";
         if (event.type === "checkout.session.expired") {
@@ -760,13 +916,14 @@ export async function handleVendorStripeEvent(event: Stripe.Event): Promise<stri
         }
         const pay = db.select().from(schema.vendorPayments).where(eq(schema.vendorPayments.stripeSessionId, s.id)).get();
         if (!pay) {
-          // The completed event has not arrived yet: finish it first, then apply this one.
-          if (event.type === "checkout.session.async_payment_succeeded") await completeCheckout(c.id, { ...s, payment_status: "paid" });
-          else {
-            await completeCheckout(c.id, { ...s, payment_status: "unpaid" });
-            return handleVendorStripeEvent(event);
+          // The completed event has not arrived yet: finish it first, then apply this one (once, never looping).
+          if (event.type === "checkout.session.async_payment_succeeded") {
+            await completeCheckout(c.id, { ...s, payment_status: "paid" });
+            return "vendor_paid";
           }
-          return "vendor_paid";
+          await completeCheckout(c.id, { ...s, payment_status: "unpaid" });
+          const again = db.select().from(schema.vendorPayments).where(eq(schema.vendorPayments.stripeSessionId, s.id)).get();
+          return again ? settleSessionPayment(event.type, again, s) : "ignored";
         }
         return settleSessionPayment(event.type, pay, s);
       }
@@ -774,7 +931,10 @@ export async function handleVendorStripeEvent(event: Stripe.Event): Promise<stri
       if (setupFor) return event.type === "checkout.session.completed" ? ((await completeSetup(setupFor, s, account ?? "")) ?? "ignored") : "ignored";
       const vendorId = Number(s.metadata?.leaddash_vendor_pay ?? 0);
       if (!vendorId) return null;
-      if (event.type === "checkout.session.expired") return "ignored";
+      if (event.type === "checkout.session.expired") {
+        db.update(schema.vendors).set({ paySessionId: null, paySessionExpiresAt: null }).where(and(eq(schema.vendors.id, vendorId), eq(schema.vendors.paySessionId, s.id))).run();
+        return "ignored";
+      }
       if (event.type === "checkout.session.completed") return (await completeBalance(vendorId, s, account ?? "")) ?? "ignored";
       const pay = db.select().from(schema.vendorPayments).where(eq(schema.vendorPayments.stripeSessionId, s.id)).get();
       if (!pay) {
@@ -787,6 +947,8 @@ export async function handleVendorStripeEvent(event: Stripe.Event): Promise<stri
     case "payment_intent.succeeded":
     case "payment_intent.payment_failed":
       return handleVendorPaymentIntent(event.type, event.data.object as Stripe.PaymentIntent, account);
+    case "charge.refunded":
+      return handleVendorRefund(event.data.object as Stripe.Charge, account);
     case "charge.dispute.created": {
       const d = event.data.object as Stripe.Dispute;
       return (await handleVendorDispute(d, account)) ?? (await handleOrderDispute(d, account));
@@ -819,7 +981,11 @@ async function handleOrderDispute(d: Stripe.Dispute, account: string | null) {
     .where(and(eq(schema.orgMembers.orgId, ev.orgId), eq(schema.orgMembers.role, "owner")))
     .all();
   for (const o of owners) {
-    await sendEmail({ to: o.email, fromName: style.fromName, subject: `${style.fromName}: ticket payment failed for ${who}`, text: `${text}\n\n${url}`, html: emailLayout({ ...style, title: "A ticket payment failed", blocks: [`<p>${escapeHtml(text)}</p>`, emailButton("Open payments", url, ev.branding)], footer: escapeHtml(org.name) }) });
+    try {
+      await sendEmail({ to: o.email, fromName: style.fromName, subject: `${style.fromName}: ticket payment failed for ${who}`, text: `${text}\n\n${url}`, html: emailLayout({ ...style, title: "A ticket payment failed", blocks: [`<p>${escapeHtml(text)}</p>`, emailButton("Open payments", url, ev.branding)], footer: escapeHtml(org.name) }) });
+    } catch (err) {
+      console.error("[vendor checkout] dispute notice:", err);
+    }
   }
   return "order_dispute";
 }
@@ -839,6 +1005,114 @@ async function settleSessionPayment(type: string, pay: typeof schema.vendorPayme
   const v = db.select().from(schema.vendors).where(eq(schema.vendors.id, pay.vendorId)).get();
   if (v) await paymentFailedEmails(v, pay.amountCents, reason);
   return "vendor_failed";
+}
+
+/* ---------- Logo uploads ---------- */
+
+const UPLOAD_TTL_MS = 2 * 60 * 60_000;
+const MAX_UPLOADS = 5;
+const LOGO_BYTES = 5 * 1024 * 1024;
+const uploadCounts = new Map<string, { n: number; until: number }>();
+
+/** A short-lived token from the page load that lets this visitor upload a logo (a few times). */
+export function uploadTokenFor(eventId: number, kind: Kind, now = Date.now()) {
+  const exp = now + UPLOAD_TTL_MS;
+  const nonce = randomToken(9);
+  return `${exp}.${nonce}.${sign(`vendor-upload:${eventId}:${kind}:${exp}:${nonce}`)}`;
+}
+
+/** The upload allowance a logo upload uses: the checkout's, or the page token's. Throws when neither is valid or it is used up. */
+function useUploadAllowance(ev: EventRow, kind: Kind, input: { token?: string; uploadToken?: string }) {
+  const now = Date.now();
+  let key = "";
+  if (input.token) {
+    const c = getDb().select().from(schema.vendorCheckouts).where(eq(schema.vendorCheckouts.doneToken, input.token)).get();
+    if (c && c.eventId === ev.id && c.kind === kind && ["started", "expired"].includes(c.status)) key = `c:${c.id}`;
+  }
+  if (!key && input.uploadToken) {
+    const [exp, nonce, sig] = input.uploadToken.split(".");
+    if (exp && nonce && sig && Number(exp) > now && safeEqual(sig, sign(`vendor-upload:${ev.id}:${kind}:${exp}:${nonce}`))) key = `u:${nonce}`;
+  }
+  if (!key) throw bad("Reload the page, then upload the logo again.");
+  if (uploadCounts.size > 10_000) uploadCounts.forEach((v, k) => v.until < now && uploadCounts.delete(k));
+  const entry = uploadCounts.get(key);
+  if (entry && entry.until > now && entry.n >= MAX_UPLOADS) throw bad("That is a lot of uploads. Reload the page to try again.");
+  if (!entry || entry.until <= now) uploadCounts.set(key, { n: 1, until: now + UPLOAD_TTL_MS });
+  else entry.n++;
+}
+
+/** Whether the bytes really are the image type claimed (PNG, JPEG or WebP). */
+function imageMatches(mime: string, data: Buffer) {
+  if (mime === "image/png") return data.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  if (mime === "image/jpeg") return data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff;
+  if (mime === "image/webp") return data.subarray(0, 4).toString("latin1") === "RIFF" && data.subarray(8, 12).toString("latin1") === "WEBP";
+  return false;
+}
+
+/** Checkouts starting a Stripe session right now (one at a time per checkout, so a double click cannot open two). */
+const starting = new Set<number>();
+
+/**
+ * The Pay button: reuses or closes an earlier Stripe session, checks the order
+ * again, then holds the package (status pending from now) before Stripe is
+ * asked, and lets it go again if Stripe fails. A checkout never has two
+ * sessions that can be paid: an earlier one is closed first, or the new one
+ * is not made.
+ */
+async function startPayment(ev: EventRow, start: VendorCheckout, payOption: PayOption, doneUrl: string) {
+  const db = getDb();
+  let c = start;
+  if (c.status === "pending" && c.stripeSessionId && c.stripeAccountId) {
+    const oldId = c.stripeSessionId;
+    const acct = c.stripeAccountId;
+    try {
+      const s = await vstripe().checkout.sessions.retrieve(oldId, {}, { stripeAccount: acct });
+      if (s.status === "complete") {
+        await completeCheckout(c.id, s);
+        return { kind: "done" as const, doneUrl };
+      }
+      if (s.status === "open" && s.client_secret && c.payOption === payOption) return { kind: "pay" as const, clientSecret: s.client_secret };
+      // They changed how to pay: close the old session so only the new one can be paid.
+      if (s.status === "open") await vstripe().checkout.sessions.expire(oldId, {}, { stripeAccount: acct });
+    } catch (err) {
+      console.error("[vendor checkout] earlier session:", err);
+      let closed = false;
+      try {
+        await vstripe().checkout.sessions.expire(oldId, {}, { stripeAccount: acct });
+        closed = true;
+      } catch (again) {
+        console.error("[vendor checkout] closing earlier session:", again);
+      }
+      // Sessions are made to expire an hour after Pay; past that it cannot be paid anyway.
+      const surelyExpired = Date.now() - new Date(c.pendingAt ?? c.createdAt ?? 0).getTime() > PENDING_HOLD_MS + 5 * 60_000;
+      if (!closed && !surelyExpired) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "We could not start the payment. Please try again." });
+    }
+    c = db.select().from(schema.vendorCheckouts).where(eq(schema.vendorCheckouts.id, c.id)).get()!;
+    if (["paid", "invoice"].includes(c.status)) return { kind: "done" as const, doneUrl };
+  }
+  if (c.status === "failed") throw bad("This checkout did not go through. Start again.");
+  const o = validateOrder(ev, c.kind, { packageId: c.packageId, buyer: c.buyer, payOption, strictOption: true }, c.id);
+  c = db.update(schema.vendorCheckouts).set({ payOption: o.payOption, totalCents: o.totalCents, dueTodayCents: o.dueTodayCents, status: "started", pendingAt: null }).where(eq(schema.vendorCheckouts.id, c.id)).returning().get();
+  const a = syncAgreement(ev, c);
+  if (a && a.status !== "signed") throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Sign the agreement before paying." });
+  if (o.payOption === "invoice" || o.dueTodayCents === 0) {
+    await completeWithoutPayment(c);
+    return { kind: "done" as const, doneUrl };
+  }
+  const pay = paymentsFor(ev.orgId);
+  if (!pay.ready || !pay.accountId) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "This event is not taking payments yet. Please try again later." });
+  // Held from now, before Stripe is asked, so a second buyer sees the last one as taken.
+  db.update(schema.vendorCheckouts).set({ status: "pending", pendingAt: new Date() }).where(and(eq(schema.vendorCheckouts.id, c.id), eq(schema.vendorCheckouts.status, "started"))).run();
+  try {
+    // A checkout that had a session before gets a new key, so Stripe never hands back the old (expired) one.
+    const key = `leaddash-vendor-checkout-${c.id}-${o.payOption}-${o.dueTodayCents}${c.stripeSessionId ? `-${randomToken(8)}` : ""}`;
+    const clientSecret = await createSession(ev, c, o.page, o.pkg, { accountId: pay.accountId, key });
+    return { kind: "pay" as const, clientSecret };
+  } catch (err) {
+    console.error("[stripe] vendor checkout session failed:", err);
+    db.update(schema.vendorCheckouts).set({ status: "started", pendingAt: null }).where(and(eq(schema.vendorCheckouts.id, c.id), eq(schema.vendorCheckouts.status, "pending"))).run();
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "We could not start the payment. Please try again." });
+  }
 }
 
 /* ---------- Routes ---------- */
@@ -920,6 +1194,8 @@ const adminRouter = router({
     const r = await chargeBalance(v.id);
     audit(ctx.user, { orgId: event.orgId, eventId: event.id, action: "vendor.charge_now", detail: `${v.company}: ${r.status}` });
     if (r.status === "failed") throw bad(`The charge did not go through: ${r.error}`);
+    // Waiting on the pay link, or on Stripe to confirm an earlier try: nothing new was charged.
+    if (r.error) throw bad(r.error);
     return r;
   }),
 
@@ -973,18 +1249,27 @@ export const vendorCheckoutRouter = router({
       })),
       categories: input.kind === "exhibitor" ? eventCategories(ev.id) : [],
       payments: paymentsFor(ev.orgId),
+      /** Pass with uploadLogo (the logo on the Company step). */
+      uploadToken: uploadTokenFor(ev.id, input.kind),
     };
   }),
 
-  /** The logo on the Company step (images only, public, tied to this upload by a signed token). */
+  /**
+   * The logo on the Company step: PNG, JPEG or WebP up to 5 MB, tied to this
+   * upload by a signed token. Needs the upload token from the page (or the
+   * checkout's token), and each allows a few uploads.
+   */
   uploadLogo: publicProcedure
-    .input(z.object({ slug: slugIn, kind: kindIn, name: z.string().max(200), mime: z.enum(["image/png", "image/jpeg", "image/webp", "image/svg+xml"]), base64: z.string().max(7_000_000) }))
+    .input(z.object({ slug: slugIn, kind: kindIn, uploadToken: z.string().max(200).optional(), token: tokenIn.optional(), name: z.string().max(200), mime: z.enum(["image/png", "image/jpeg", "image/webp"]), base64: z.string().max(7_000_000) }))
     .mutation(({ input }) => {
       const ev = getEventBySlug(input.slug);
       const page = vendorPageFor(ev.id, input.kind);
       const closed = closedReason(ev, page, eventToday(ev));
       if (closed) throw bad(closed);
-      if (Buffer.byteLength(input.base64.replace(/^data:[^,]+,/, ""), "base64") > 5 * 1024 * 1024) throw bad("Logos can be up to 5 MB.");
+      const data = Buffer.from(input.base64.replace(/^data:[^,]+,/, ""), "base64");
+      if (data.length > LOGO_BYTES) throw bad("Logos can be up to 5 MB.");
+      if (!imageMatches(input.mime, data)) throw bad("Upload a PNG, JPEG or WebP image.");
+      useUploadAllowance(ev, input.kind, input);
       const f = saveFile({ orgId: ev.orgId, name: input.name || "logo", mime: input.mime, base64: input.base64, isPublic: true, userId: null });
       return { fileId: f.id, url: fileUrl(f.id)!, token: logoToken(f.id) };
     }),
@@ -1033,44 +1318,15 @@ export const vendorCheckoutRouter = router({
   /** Pay (Stripe Checkout on the organization's account) or Request invoice. */
   start: publicProcedure.input(startIn).mutation(async ({ input }) => {
     const ev = getEventBySlug(input.slug);
-    const db = getDb();
-    let c = checkoutFor(ev, input.kind, input.token);
+    const c = checkoutFor(ev, input.kind, input.token);
     const doneUrl = `/r/${ev.slug}/${kindPath(input.kind)}/done?c=${c.doneToken}`;
     if (["paid", "invoice"].includes(c.status)) return { kind: "done" as const, doneUrl };
-    // A Stripe session already started: reuse it while open, finish it if it was paid.
-    if (c.status === "pending" && c.stripeSessionId && c.stripeAccountId) {
-      try {
-        const s = await vstripe().checkout.sessions.retrieve(c.stripeSessionId, {}, { stripeAccount: c.stripeAccountId });
-        if (s.status === "complete") {
-          await completeCheckout(c.id, s);
-          return { kind: "done" as const, doneUrl };
-        }
-        if (s.status === "open" && s.client_secret && c.payOption === input.payOption) return { kind: "pay" as const, clientSecret: s.client_secret };
-        // They changed how to pay: close the old session so only the new one can be paid.
-        if (s.status === "open") await vstripe().checkout.sessions.expire(c.stripeSessionId, {}, { stripeAccount: c.stripeAccountId });
-      } catch (err) {
-        console.error("[vendor checkout] earlier session:", err);
-      }
-    }
-    if (c.status === "failed") throw bad("This checkout did not go through. Start again.");
-    const restart = c.status !== "started";
-    const o = validateOrder(ev, input.kind, { packageId: c.packageId, buyer: c.buyer, payOption: input.payOption, strictOption: true }, c.id);
-    c = db.update(schema.vendorCheckouts).set({ payOption: o.payOption, totalCents: o.totalCents, dueTodayCents: o.dueTodayCents, status: "started" }).where(eq(schema.vendorCheckouts.id, c.id)).returning().get();
-    const a = syncAgreement(ev, c);
-    if (a && a.status !== "signed") throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Sign the agreement before paying." });
-    if (o.payOption === "invoice" || o.dueTodayCents === 0) {
-      await completeWithoutPayment(c);
-      return { kind: "done" as const, doneUrl };
-    }
-    const pay = paymentsFor(ev.orgId);
-    if (!pay.ready || !pay.accountId) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "This event is not taking payments yet. Please try again later." });
+    if (starting.has(c.id)) throw bad("Your payment is starting. Wait a moment, then try again.");
+    starting.add(c.id);
     try {
-      const key = `leaddash-vendor-checkout-${c.id}-${o.payOption}-${o.dueTodayCents}${restart ? `-${Date.now()}` : ""}`;
-      const clientSecret = await createSession(ev, c, o.page, o.pkg, { accountId: pay.accountId, key });
-      return { kind: "pay" as const, clientSecret };
-    } catch (err) {
-      console.error("[stripe] vendor checkout session failed:", err);
-      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "We could not start the payment. Please try again." });
+      return await startPayment(ev, c, input.payOption, doneUrl);
+    } finally {
+      starting.delete(c.id);
     }
   }),
 
@@ -1114,7 +1370,7 @@ export const vendorCheckoutRouter = router({
   }),
 
   /** Add your pass names (from the confirmation page; the token is the buyer's secret). */
-  addPasses: publicProcedure.input(z.object({ slug: slugIn, kind: kindIn, c: tokenIn, people: z.array(personIn).min(1).max(60) })).mutation(({ input }) => {
+  addPasses: publicProcedure.input(z.object({ slug: slugIn, kind: kindIn, c: tokenIn, people: z.array(personIn).min(1).max(60) })).mutation(async ({ input }) => {
     const ev = getEventBySlug(input.slug);
     const c = checkoutFor(ev, input.kind, input.c);
     const v = c.vendorId ? getDb().select().from(schema.vendors).where(eq(schema.vendors.id, c.vendorId)).get() : undefined;
@@ -1124,7 +1380,9 @@ export const vendorCheckoutRouter = router({
       if (!p.name) throw bad(`Add a name for ${p.email}.`);
       if (!emailOk(p.email)) throw bad(`Enter a valid email for ${p.name}.`);
     }
-    return { added: addPassPeople(v, people) };
+    const { added, already } = addPassPeople(v, people);
+    await alreadyOnEventNotice(v, already);
+    return { added };
   }),
 
   /** The vendor pay link page (/r/:slug/sponsor/pay?v=). */
@@ -1192,6 +1450,22 @@ export const vendorCheckoutRouter = router({
     if (owed <= 0) throw bad("Nothing is owed.");
     const pay = paymentsFor(ev.orgId);
     if (!pay.ready || !pay.accountId) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "This event is not taking payments yet. Please try again later." });
+    // An earlier pay link session: reuse it while it is open for the same amount, else close it first (only one can be paid).
+    if (v.paySessionId) {
+      try {
+        const s = await vstripe().checkout.sessions.retrieve(v.paySessionId, {}, { stripeAccount: pay.accountId });
+        if (s.status === "complete") {
+          await completeBalance(v.id, s, pay.accountId);
+          throw bad("This payment is already done. Reload the page.");
+        }
+        if (s.status === "open" && s.client_secret && s.amount_total === owed) return { clientSecret: s.client_secret };
+        if (s.status === "open") await vstripe().checkout.sessions.expire(v.paySessionId, {}, { stripeAccount: pay.accountId });
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        console.error("[stripe] earlier vendor pay session:", err);
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "We could not start the payment. Please try again." });
+      }
+    }
     try {
       return { clientSecret: await createBalanceSession(ev, v, owed, pay.accountId) };
     } catch (err) {

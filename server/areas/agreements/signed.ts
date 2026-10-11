@@ -6,7 +6,18 @@ import { getDb, schema } from "../../_core/db";
 import { fileUrl } from "../../_core/files";
 import { ENV } from "../../_core/env";
 import { fmtWhen } from "@shared/format";
-import type { Agreement, EventBranding } from "../../../drizzle/schema";
+import type { Agreement, AgreementTemplate, EventBranding } from "../../../drizzle/schema";
+
+/** Template values keys for the organization signer's drawn signature (a PNG file id) and the name it was drawn for. */
+export const COUNTERSIGN_FILE = "__countersignFileId";
+export const COUNTERSIGN_NAME = "__countersignName";
+
+/** The organization signer's signature PNG for this name, when the template has one drawn for it. */
+export function countersignFileId(t: Pick<AgreementTemplate, "values"> | undefined, name: string): number | null {
+  const v = t?.values ?? {};
+  const id = Number(v[COUNTERSIGN_FILE]);
+  return id > 0 && name.trim() && v[COUNTERSIGN_NAME] === name.trim() ? id : null;
+}
 
 /** "SA-2027-0004": kind letters, the event's year and the agreement number. */
 export function agreementLabel(a: Pick<Agreement, "id" | "kind">, eventStart: string) {
@@ -64,14 +75,18 @@ export function signedCopy(a: Agreement) {
     },
   ];
   if (a.countersignName) {
+    // Drawn in the signature font when the template was saved, so it looks like the signer's.
+    const t = a.templateId ? db.select().from(schema.agreementTemplates).where(eq(schema.agreementTemplates.id, a.templateId)).get() : undefined;
+    const fid = countersignFileId(t, a.countersignName);
+    const counter = fid ? fileBytes(fid) : null;
     signatures.push({
       name: a.countersignName,
       title: a.countersignTitle,
       company: org.name,
       when: a.signedAt ? `Signed ${dateInZone(a.signedAt, event.timezone)} (added automatically)` : "",
-      png: null,
-      pngUrl: null,
-      drawn: false,
+      png: counter?.data ?? null,
+      pngUrl: counter ? fileUrl(fid) : null,
+      drawn: !!counter,
     });
   }
   const label = agreementLabel(a, event.startDate);

@@ -97,13 +97,40 @@ function emailFont(look?: BrandLike) {
 }
 
 /**
- * A simple branded email layout. `blocks` are already-escaped HTML fragments.
- * Colors come from the event's branding; `look` adds its font.
+ * The email header from the event's Header setting. Solid: a band in the main
+ * color with the event name. Light: white with the name in the main color and a
+ * thin main-color rule. Cover: the cover image with the name over it (darkened
+ * like the app header), or the solid band when there is no cover. Without an
+ * event name, the cover image or a thin color bar.
  */
-export function emailLayout(opts: { brand: string; accent: string; coverUrl?: string | null; title?: string; blocks: string[]; footer?: string; look?: BrandLike }) {
-  const cover = opts.coverUrl
-    ? `<img src="${opts.coverUrl}" alt="" width="560" style="display:block;width:100%;max-width:560px;height:auto;border:0">`
-    : `<div style="height:8px;background:${opts.brand}"></div>`;
+function emailHeader(opts: { brand: string; coverUrl?: string | null; eventName?: string | null; look?: BrandLike }) {
+  const name = opts.eventName?.trim();
+  if (!name) {
+    return opts.coverUrl
+      ? `<img src="${opts.coverUrl}" alt="" width="560" style="display:block;width:100%;max-width:560px;height:auto;border:0">`
+      : `<div style="height:8px;background:${opts.brand}"></div>`;
+  }
+  const header = lookOf(opts.look).header;
+  const title = escapeHtml(name);
+  const band = (bg: string, ink: string, extra = "") =>
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td bgcolor="${bg}" style="background:${bg};${extra}padding:18px 24px;font-size:17px;font-weight:bold;line-height:1.3;color:${ink}">${title}</td></tr></table>`;
+  if (header === "light") return band("#FFFFFF", opts.brand, `border-bottom:3px solid ${opts.brand};`);
+  if (header === "cover" && opts.coverUrl) {
+    const url = opts.coverUrl.replace(/"/g, "%22");
+    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td background="${url}" bgcolor="${opts.brand}" style="background:${opts.brand} url('${url}') center/cover no-repeat;background-image:linear-gradient(rgba(0,0,0,0.45),rgba(0,0,0,0.45)),url('${url}');background-size:cover;background-position:center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="padding:56px 24px 18px;font-size:20px;font-weight:bold;line-height:1.3;color:#FFFFFF;text-shadow:0 1px 2px rgba(0,0,0,0.4)">${title}</td></tr></table>
+</td></tr></table>`;
+  }
+  return band(opts.brand, readableOn(opts.brand));
+}
+
+/**
+ * A simple branded email layout. `blocks` are already-escaped HTML fragments.
+ * Colors come from the event's branding; `look` adds its font and header style.
+ * Pass `eventName` to show the event name in the header.
+ */
+export function emailLayout(opts: { brand: string; accent: string; coverUrl?: string | null; eventName?: string | null; title?: string; blocks: string[]; footer?: string; look?: BrandLike }) {
+  const cover = emailHeader(opts);
   return `<!doctype html><html><body style="margin:0;background:#F8FAFB;font-family:${emailFont(opts.look).replace(/"/g, "'")};color:#0F2A23">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px">
 <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#FFFFFF;border:1px solid #E1E8E5;border-radius:14px;overflow:hidden">

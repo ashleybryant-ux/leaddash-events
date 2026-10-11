@@ -424,7 +424,7 @@ export async function renderRecipientEmail(t: RecipientDraft, c: Ctx, opts: { pr
   }
   if (attachNote) add(note(attachNote), attachNote);
   const { brand, accent } = brandOf(ev);
-  const html = emailLayout({ brand, accent, coverUrl: coverFor(ev), title, blocks, look: ev.branding });
+  const html = emailLayout({ brand, accent, coverUrl: coverFor(ev), eventName: ev.name, title, blocks, look: ev.branding });
   return { subject, text: (title ? [title, ...text] : text).join("\n\n"), html };
 }
 
@@ -474,17 +474,32 @@ function boothTimes(eventId: number) {
   return { setupTime: values["Setup time"] ?? "", teardownTime: values["Teardown time"] ?? "" };
 }
 
-/** Where vendors reply: the welcome's reply-to, then the attendee welcome's, then the vendor checkout page's notify address. */
+/**
+ * Where vendors reply: the welcome's reply-to, then the attendee welcome's,
+ * then the vendor checkout page's notify address, then an email link on the
+ * event's host page, then the organization owner's email. The welcome buttons
+ * reply to this address, so it is only empty when none of those exist.
+ */
 function replyAddress(ev: EventRow, t: Pick<Template, "replyTo"> | undefined, group: "sponsors" | "exhibitors") {
   if (t?.replyTo) return t.replyTo;
   const welcome = templateFor(ev.id, "welcome");
   if (welcome?.replyTo) return welcome.replyTo;
-  const page = getDb()
+  const db = getDb();
+  const page = db
     .select()
     .from(schema.vendorCheckoutPages)
     .where(and(eq(schema.vendorCheckoutPages.eventId, ev.id), eq(schema.vendorCheckoutPages.kind, group === "sponsors" ? "sponsor" : "exhibitor")))
     .get();
-  return page?.notifyEmail ?? "";
+  if (page?.notifyEmail) return page.notifyEmail;
+  const hostMail = (ev.hostLinks ?? []).map((l) => /^mailto:([^?]+)/i.exec(l.url.trim())?.[1] ?? "").find((m) => m.includes("@"));
+  if (hostMail) return decodeURIComponent(hostMail);
+  const owner = db
+    .select({ email: schema.users.email })
+    .from(schema.orgMembers)
+    .innerJoin(schema.users, eq(schema.users.id, schema.orgMembers.userId))
+    .where(and(eq(schema.orgMembers.orgId, ev.orgId), eq(schema.orgMembers.role, "owner")))
+    .get();
+  return owner?.email ?? "";
 }
 
 export function vendorCtx(v: Vendor, ev: EventRow, replyTo?: string): VendorCtx {
@@ -509,7 +524,7 @@ export function vendorCtx(v: Vendor, ev: EventRow, replyTo?: string): VendorCtx 
     addons: v.addons.map((l) => (l.qty > 1 ? `${l.name} (${l.qty})` : l.name)),
     ...boothTimes(ev.id),
     logoDueOn: typeof logo?.includes.logoDueOn === "string" ? logo.includes.logoDueOn : "",
-    replyTo: replyTo ?? replyAddress(ev, welcome, group),
+    replyTo: replyTo || replyAddress(ev, welcome, group),
     signed: signedOf(list),
   };
 }
@@ -558,7 +573,7 @@ async function sampleCtx(ev: EventRow, group: RecipientGroup, replyTo: string): 
     addons: [],
     ...boothTimes(ev.id),
     logoDueOn: typeof logo?.includes.logoDueOn === "string" ? logo.includes.logoDueOn : "",
-    replyTo,
+    replyTo: replyTo || replyAddress(ev, undefined, group),
     signed: null,
   };
 }

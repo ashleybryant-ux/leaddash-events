@@ -207,7 +207,7 @@ export function renderEmail(t: TemplateDraft, c: Ctx) {
     blocks.push(`<p style="margin:0 0 12px;font-size:13px"><a href="${escapeHtml(inc.hotelUrl)}" style="color:${brand};font-weight:bold">Book the hotel block</a></p>`);
     text.push(`Book the hotel block: ${inc.hotelUrl}`);
   }
-  const html = emailLayout({ brand, accent, coverUrl: coverFor(ev), blocks, look: ev.branding });
+  const html = emailLayout({ brand, accent, coverUrl: coverFor(ev), eventName: ev.name, blocks, look: ev.branding });
   return { subject, text: text.join("\n\n"), html };
 }
 

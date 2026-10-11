@@ -5,7 +5,7 @@
 import { useState } from "react";
 import { trpc } from "../../lib/trpc";
 import { AdminPage, useAdminEvent } from "../../shells/AdminShell";
-import { Empty, ErrorNote, Kpi, PageLoading } from "../../ui/components";
+import { Empty, ErrorNote, PageLoading, NumStrip } from "../../ui/components";
 import { errorText, toast } from "../../ui/toast";
 import { fmtDate, fmtTime } from "@shared/format";
 import { downloadCsv } from "./util";
@@ -64,13 +64,15 @@ export function AdminReports() {
         <ErrorNote error={q.error} />
       ) : r ? (
         <>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
-            <Kpi label="Registered" value={n(r.kpis.registered)} />
-            <Kpi label="Checked in" value={n(r.kpis.checkedIn)} note={`${r.kpis.checkInRate}% of registered`} />
-            <Kpi label="Opened the app" value={n(r.kpis.openedApp)} note={r.kpis.registered ? `${Math.round((r.kpis.openedApp / r.kpis.registered) * 100)}% of registered` : undefined} />
-            <Kpi label="CE hours issued" value={n(r.kpis.ceHours)} note={`${n(r.kpis.certificates)} certificates`} />
-            {r.kpis.returning ? <Kpi label={r.kpis.returning.label} value={`${r.kpis.returning.percent}%`} /> : null}
-          </div>
+          <NumStrip
+            items={[
+              { label: "Registered", value: n(r.kpis.registered) },
+              { label: "Checked in", value: n(r.kpis.checkedIn), note: `${r.kpis.checkInRate}% of registered` },
+              { label: "Opened the app", value: n(r.kpis.openedApp), note: r.kpis.registered ? `${Math.round((r.kpis.openedApp / r.kpis.registered) * 100)}% of registered` : undefined },
+              { label: "CE hours issued", value: n(r.kpis.ceHours), note: `${n(r.kpis.certificates)} certificates` },
+              ...(r.kpis.returning ? [{ label: r.kpis.returning.label, value: `${r.kpis.returning.percent}%` }] : []),
+            ]}
+          />
 
           <div className="card" style={{ overflowX: "auto" }}>
             <div style={{ minWidth: 760 }}>

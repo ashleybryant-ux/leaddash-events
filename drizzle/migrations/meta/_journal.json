@@ -50,6 +50,13 @@
       "when": 1791674635583,
       "tag": "0006_vendor_pay_token",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1791678451041,
+      "tag": "0007_vendor_money_fixes",
+      "breakpoints": true
     }
   ]
 }

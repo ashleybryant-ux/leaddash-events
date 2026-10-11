@@ -38,7 +38,6 @@ const isExhibitor = (v: { kind: VendorRow["kind"] }) => v.kind !== "sponsor";
 
 function detailsDraft(v: VendorRow) {
   return {
-    company: v.company,
     kind: v.kind,
     packageId: v.packageId,
     amount: fmtMoney(v.amountCents, ""),
@@ -47,6 +46,13 @@ function detailsDraft(v: VendorRow) {
     email: v.email,
     phone: v.phone,
     active: v.status !== "cancelled",
+  };
+}
+
+function appDraft(v: VendorRow) {
+  return {
+    company: v.company,
+    booth: v.booth,
     logoFileId: v.logoFileId,
     logoUrl: v.logoUrl,
     description: v.description,
@@ -60,6 +66,30 @@ function detailsDraft(v: VendorRow) {
   };
 }
 
+/** Everything saveDetails takes, from the saved row. Each section overrides its own fields. */
+function savedInput(v: VendorRow) {
+  return {
+    company: v.company,
+    kind: v.kind,
+    packageId: v.packageId,
+    amountCents: v.amountCents,
+    booth: v.booth,
+    contactName: v.contactName,
+    email: v.email,
+    phone: v.phone,
+    active: v.status !== "cancelled",
+    logoFileId: v.logoFileId,
+    description: v.description,
+    website: v.website,
+    category: v.category,
+    offer: v.offer,
+    notes: v.notes,
+    boothStaff: v.boothStaff,
+    visible: v.visible,
+    leadScanning: v.leadScanning,
+  };
+}
+
 function agreementText(v: VendorRow) {
   const a = v.agreement;
   if (!a) return "No agreement";
@@ -67,23 +97,36 @@ function agreementText(v: VendorRow) {
   return "Not signed";
 }
 
+/** Agreement templates that fit a vendor kind: sponsor ones for sponsors, exhibitor ones for exhibitors, both for sponsors who also exhibit. */
+const templateFits = (kind: VendorRow["kind"], t: { kind: string }) => (kind === "exhibitor" ? t.kind === "exhibitor" : kind === "sponsor" ? t.kind === "sponsor" : t.kind !== "speaker");
+
 function DetailsSection({ v, side, packages }: { v: VendorRow; side: Side; packages: PackageRow[] }) {
   const ev = useAdminEvent();
   const { can } = useAdmin();
-  const [, navigate] = useLocation();
   const utils = trpc.useUtils();
+  const canEdit = can("vendors", "edit");
   const save = trpc.network.vendors.saveDetails.useMutation();
-  const remove = trpc.network.vendors.remove.useMutation();
+  const templates = trpc.agreements.templates.list.useQuery({ eventId: ev.id }, { enabled: canEdit, staleTime: 30_000 });
+  const chosen = trpc.agreements.vendorTemplate.useQuery({ eventId: ev.id, vendorId: v.id }, { enabled: canEdit });
+  const setTemplate = trpc.agreements.setVendorTemplate.useMutation();
   const [d, setD] = useState(() => detailsDraft(v));
+  const [templateId, setTemplateId] = useState<number | null>(null);
   const pkg = packages.find((p) => p.id === d.packageId);
   const word = side === "sponsors" ? "sponsor" : "exhibitor";
   const sponsorPkgs = packages.filter((p) => p.kind === "sponsor");
   const boothPkgs = packages.filter((p) => p.kind === "exhibitor");
-  const also = side === "sponsors" ? d.kind === "both" : d.kind === "both";
+  const also = d.kind === "both";
+  const fitting = (templates.data?.templates ?? []).filter((t) => templateFits(d.kind, t));
+  const savedTemplate = chosen.data?.templateId ?? null;
+  const pickedTemplate = templateId && fitting.some((t) => t.id === templateId) ? templateId : savedTemplate && fitting.some((t) => t.id === savedTemplate) ? savedTemplate : fitting[0]?.id ?? null;
 
   const pickPackage = (id: number | null) => {
     const p = packages.find((x) => x.id === id);
     setD({ ...d, packageId: id, ...(p ? { amount: fmtMoney(p.priceCents, "") } : {}) });
+  };
+  const reset = () => {
+    setD(detailsDraft(v));
+    setTemplateId(null);
   };
 
   const view = (
@@ -149,7 +192,7 @@ function DetailsSection({ v, side, packages }: { v: VendorRow; side: Side; packa
           ) : null}
         </select>
       </Field>
-      {pkg && d.packageId !== v.packageId ? <div className="sp-ok">{includesSentence(pkg)}. Price and benefits fill in now.</div> : null}
+      {pkg ? <div className="sp-ok">{includesSentence(pkg)}. {d.packageId !== v.packageId ? "Price and benefits fill in now." : ""}</div> : null}
       <div className="grid-2">
         <Field label={`Price for this ${word}`}>
           <input className="input" inputMode="decimal" value={d.amount} onChange={(e) => setD({ ...d, amount: e.target.value })} />
@@ -169,7 +212,7 @@ function DetailsSection({ v, side, packages }: { v: VendorRow; side: Side; packa
             </select>
           </Field>
         )}
-        {d.kind !== "sponsor" ? (
+        {side === "exhibitors" || (also && !v.booth) ? (
           <Field label="Booth number">
             <input className="input" value={d.booth} maxLength={20} onChange={(e) => setD({ ...d, booth: e.target.value })} />
           </Field>
@@ -185,12 +228,104 @@ function DetailsSection({ v, side, packages }: { v: VendorRow; side: Side; packa
         </Field>
         <Field label="Status">
           <select className="select" value={d.active ? "active" : "cancelled"} onChange={(e) => setD({ ...d, active: e.target.value === "active" })}>
-            <option value="active">Active</option>
+            <option value="active">{v.status !== "cancelled" ? v.statusLabel : "Active"}</option>
             <option value="cancelled">Cancelled</option>
           </select>
         </Field>
+        {fitting.length ? (
+          <Field label="Agreement template">
+            <select className="select" value={pickedTemplate ?? ""} disabled={chosen.data?.signed} onChange={(e) => setTemplateId(Number(e.target.value))}>
+              {fitting.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        ) : null}
       </div>
-      <span className="sp-caps" style={{ marginTop: 4 }}>In the app</span>
+    </>
+  );
+
+  const title = side === "sponsors" ? "Sponsor details" : "Exhibitor details";
+  if (!canEdit) return <SpSection title={title} view={view} />;
+  return (
+    <SpSection
+      title={title}
+      saving={save.isPending || setTemplate.isPending}
+      onOpen={reset}
+      onCancel={reset}
+      onSave={async () => {
+        await save.mutateAsync({
+          eventId: ev.id,
+          vendorId: v.id,
+          ...savedInput(v),
+          kind: d.kind,
+          packageId: d.packageId,
+          amountCents: toCents(d.amount),
+          booth: d.kind === "sponsor" ? "" : d.booth,
+          contactName: d.contactName,
+          email: d.email.trim(),
+          phone: d.phone,
+          active: d.active,
+        });
+        if (pickedTemplate && pickedTemplate !== savedTemplate && !chosen.data?.signed) await setTemplate.mutateAsync({ eventId: ev.id, vendorId: v.id, templateId: pickedTemplate });
+        toast("Saved");
+        await Promise.all([utils.network.vendors.list.invalidate(), utils.network.packages.list.invalidate(), utils.network.maps.invalidate(), utils.agreements.vendorTemplate.invalidate()]);
+      }}
+      view={view}
+      edit={edit}
+    />
+  );
+}
+
+/* ---------- In the app ---------- */
+
+function AppSection({ v }: { v: VendorRow }) {
+  const ev = useAdminEvent();
+  const { can } = useAdmin();
+  const utils = trpc.useUtils();
+  const save = trpc.network.vendors.saveDetails.useMutation();
+  const [d, setD] = useState(() => appDraft(v));
+  const hasBooth = v.kind !== "sponsor";
+
+  const view = (
+    <div className="sp-kv">
+      <span className="k">Listed in the app</span>
+      <span>{v.visible ? "Yes" : "No"}</span>
+      <span className="k">Logo</span>
+      <span>{v.logoUrl ? "Added" : <span className="muted">Missing</span>}</span>
+      {v.category ? (
+        <>
+          <span className="k">Category</span>
+          <span>{v.category}</span>
+        </>
+      ) : null}
+      {v.website ? (
+        <>
+          <span className="k">Website</span>
+          <span className="clip">{v.website}</span>
+        </>
+      ) : null}
+      {v.offer ? (
+        <>
+          <span className="k">Booth offer</span>
+          <span>{v.offer}</span>
+        </>
+      ) : null}
+      <span className="k">Lead scanning</span>
+      <span>{v.leadScanning ? (v.boothStaff.length ? `On, ${plural(v.boothStaff.length, "booth staff email")}` : "On") : "Off"}</span>
+      {v.notes ? (
+        <>
+          <span className="k">Notes</span>
+          <span>{v.notes}</span>
+        </>
+      ) : null}
+    </div>
+  );
+
+  const edit = (
+    <>
       <div className="grid-2">
         <Field label="Company">
           <input className="input" value={d.company} maxLength={160} onChange={(e) => setD({ ...d, company: e.target.value })} />
@@ -204,8 +339,13 @@ function DetailsSection({ v, side, packages }: { v: VendorRow; side: Side; packa
         <Field label="Booth offer">
           <input className="input" value={d.offer} maxLength={300} placeholder="20% off for attendees" onChange={(e) => setD({ ...d, offer: e.target.value })} />
         </Field>
+        {hasBooth && v.kind === "both" ? (
+          <Field label="Booth number">
+            <input className="input" value={d.booth} maxLength={20} onChange={(e) => setD({ ...d, booth: e.target.value })} />
+          </Field>
+        ) : null}
         <Field label="About" className="span-all">
-          <textarea className="textarea" rows={3} maxLength={2000} value={d.description} onChange={(e) => setD({ ...d, description: e.target.value })} />
+          <textarea className="textarea" rows={2} maxLength={2000} value={d.description} onChange={(e) => setD({ ...d, description: e.target.value })} />
         </Field>
         <Field label="Booth staff emails" className="span-all" hint="Separate with commas. They can scan badges for leads.">
           <input className="input" value={d.boothStaff} onChange={(e) => setD({ ...d, boothStaff: e.target.value })} />
@@ -235,63 +375,67 @@ function DetailsSection({ v, side, packages }: { v: VendorRow; side: Side; packa
     </>
   );
 
-  const title = side === "sponsors" ? "Sponsor details" : "Exhibitor details";
-  if (!can("vendors", "edit")) return <SpSection title={title} view={view} />;
+  if (!can("vendors", "edit")) return <SpSection title="In the app" view={view} />;
   return (
     <SpSection
-      title={title}
+      title="In the app"
       saving={save.isPending}
-      onOpen={() => setD(detailsDraft(v))}
-      onCancel={() => setD(detailsDraft(v))}
+      onOpen={() => setD(appDraft(v))}
+      onCancel={() => setD(appDraft(v))}
       onSave={async () => {
-        const staff = d.boothStaff.split(/[,\s;]+/).map((s) => s.trim()).filter(Boolean);
         await save.mutateAsync({
           eventId: ev.id,
           vendorId: v.id,
+          ...savedInput(v),
           company: d.company.trim() || v.company,
-          kind: d.kind,
-          packageId: d.packageId,
-          amountCents: toCents(d.amount),
-          booth: d.kind === "sponsor" ? "" : d.booth,
-          contactName: d.contactName,
-          email: d.email.trim(),
-          phone: d.phone,
-          active: d.active,
+          booth: v.kind === "both" ? d.booth : v.booth,
           logoFileId: d.logoFileId,
           description: d.description,
           website: d.website,
           category: d.category,
           offer: d.offer,
           notes: d.notes,
-          boothStaff: staff,
+          boothStaff: d.boothStaff.split(/[,\s;]+/).map((s) => s.trim()).filter(Boolean),
           visible: d.visible,
           leadScanning: d.leadScanning,
         });
         toast("Saved");
-        await Promise.all([utils.network.vendors.list.invalidate(), utils.network.packages.list.invalidate(), utils.network.maps.invalidate()]);
+        await Promise.all([utils.network.vendors.list.invalidate(), utils.network.maps.invalidate()]);
       }}
       view={view}
       edit={edit}
-      footerRight={
-        <button
-          type="button"
-          className="btn btn-sm btn-danger btn-w"
-          disabled={remove.isPending}
-          onClick={async () => {
-            if (!confirmAction(`Delete ${v.company}? Their payments and leads go with them. To keep the record, set Status to Cancelled instead.`)) return;
-            try {
-              await remove.mutateAsync({ eventId: ev.id, vendorId: v.id });
-              await utils.network.vendors.list.invalidate();
-              navigate(`/admin/e/${ev.id}/vendors?tab=${side}`);
-            } catch (err) {
-              toast(errorText(err), true);
-            }
-          }}
-        >
-          Delete
-        </button>
-      }
     />
+  );
+}
+
+/** Delete, at the bottom of an opened sponsor or exhibitor. */
+function DeleteVendorBar({ v, side }: { v: VendorRow; side: Side }) {
+  const ev = useAdminEvent();
+  const { can } = useAdmin();
+  const [, navigate] = useLocation();
+  const utils = trpc.useUtils();
+  const remove = trpc.network.vendors.remove.useMutation();
+  if (!can("vendors", "edit")) return null;
+  return (
+    <div className="sp-del">
+      <button
+        type="button"
+        className="btn btn-sm btn-danger btn-w"
+        disabled={remove.isPending}
+        onClick={async () => {
+          if (!confirmAction(`Delete ${v.company}? Their payments and leads go with them. To keep the record, set Status to Cancelled instead.`)) return;
+          try {
+            await remove.mutateAsync({ eventId: ev.id, vendorId: v.id });
+            await utils.network.vendors.list.invalidate();
+            navigate(`/admin/e/${ev.id}/vendors?tab=${side}`);
+          } catch (err) {
+            toast(errorText(err), true);
+          }
+        }}
+      >
+        Delete
+      </button>
+    </div>
   );
 }
 
@@ -455,6 +599,8 @@ function VendorList({ data, side, vendorId, onAddPerson }: { data: ListData; sid
               <PaymentsSection key={`p-${v.id}`} v={v} nextChargeActions={<ChargeNowButton v={v} />} extraActions={v.owedCents > 0 ? <PayLinkButtons v={v} /> : undefined} />
               <PassesSection v={v} side={side} onAdd={() => onAddPerson({ kind: side === "sponsors" ? "sponsor" : "vendor", vendorId: v.id })} />
               <BenefitsSection v={v} />
+              <AppSection key={`a-${v.id}`} v={v} />
+              <DeleteVendorBar v={v} side={side} />
             </div>
           </ExpandRow>
         ))

@@ -13,6 +13,12 @@ import { finishConnect, saveAccountStatus } from "./connect";
 import { handleVendorStripeEvent } from "./vendorCheckout";
 import { userFromCookie } from "../../_core/context";
 
+/** /r/:slug/sponsor and /r/:slug/exhibit, with their step and done pages (never the pay link or the attendee checkout). */
+const VENDOR_CHECKOUT_PAGE = /^\/r\/[^/]+\/(sponsor|exhibit)(\/(done|step(\/[^/]+)?))?\/?$/;
+
+/** Pages other websites may put in a frame: the checkout embed, and the sponsor and exhibitor checkout pages (their embed code). */
+export const mayBeFramed = (path: string) => path.startsWith("/embed/") || VENDOR_CHECKOUT_PAGE.test(path);
+
 const idOf = (v: string | { id: string } | null | undefined) => (typeof v === "string" ? v : v?.id ?? null);
 
 /** Handles one verified Stripe event from a connected account. */

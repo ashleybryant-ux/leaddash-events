@@ -159,7 +159,7 @@ function PackageCard({ p, picked, onPick }: { p: Pkg; picked: boolean; onPick: (
 
 /* ---------- Step 2: company ---------- */
 
-function LogoBox({ slug, kind, form, set }: { slug: string; kind: Kind; form: Form; set: (p: Partial<Form>) => void }) {
+function LogoBox({ slug, kind, uploadToken, form, set }: { slug: string; kind: Kind; uploadToken?: string; form: Form; set: (p: Partial<Form>) => void }) {
   const input = useRef<HTMLInputElement>(null);
   const upload = trpc.registration.vendorCheckout.uploadLogo.useMutation();
   return (
@@ -169,12 +169,12 @@ function LogoBox({ slug, kind, form, set }: { slug: string; kind: Kind; form: Fo
       </div>
       <div className="col grow" style={{ gap: 1 }}>
         <span style={{ fontSize: 14, fontWeight: 800 }}>Logo</span>
-        <span className="small muted" style={{ fontSize: 13 }}>PNG or SVG, square</span>
+        <span className="small muted" style={{ fontSize: 13 }}>PNG, JPEG or WebP, square</span>
       </div>
       <input
         ref={input}
         type="file"
-        accept="image/png,image/svg+xml,image/jpeg,image/webp"
+        accept="image/png,image/jpeg,image/webp"
         className="sr-only"
         onChange={async (e) => {
           const file = e.target.files?.[0];
@@ -182,8 +182,8 @@ function LogoBox({ slug, kind, form, set }: { slug: string; kind: Kind; form: Fo
           if (!file) return;
           try {
             const base64 = await readFileBase64(file);
-            const mime = (["image/png", "image/jpeg", "image/webp", "image/svg+xml"].includes(file.type) ? file.type : "image/png") as "image/png";
-            const r = await upload.mutateAsync({ slug, kind, name: file.name, mime, base64 });
+            const mime = (["image/png", "image/jpeg", "image/webp"].includes(file.type) ? file.type : "image/png") as "image/png";
+            const r = await upload.mutateAsync({ slug, kind, uploadToken, name: file.name, mime, base64 });
             set({ logoFileId: r.fileId, logoToken: r.token, logoUrl: r.url });
           } catch (err) {
             toast(errorText(err), true);
@@ -222,6 +222,15 @@ function CompanyStep({ slug, kind, data, pkg, form, set }: { slug: string; kind:
     set({ people: next });
   };
   const field = (k: keyof Form) => (e: { target: { value: string } }) => set({ [k]: e.target.value } as Partial<Form>);
+  // The contact fills Pass 1 (Staff 1) while that row is empty or still matches the contact.
+  const contact = (k: "firstName" | "lastName" | "email") => (e: { target: { value: string } }) => {
+    const next = { ...form, [k]: e.target.value };
+    const first = people[0];
+    const was = { name: `${form.firstName} ${form.lastName}`.trim(), email: form.email.trim() };
+    const follows = first && (!first.name || first.name === was.name) && (!first.email || first.email === was.email);
+    if (!follows) return set({ [k]: e.target.value } as Partial<Form>);
+    set({ [k]: e.target.value, people: [{ ...first, name: `${next.firstName} ${next.lastName}`.trim(), email: next.email.trim() }, ...people.slice(1)] } as Partial<Form>);
+  };
   return (
     <>
       <h2 style={h2}>Company</h2>
@@ -236,16 +245,16 @@ function CompanyStep({ slug, kind, data, pkg, form, set }: { slug: string; kind:
       <div className="grid-2">
         <label className="field">
           First name
-          <input className="input" autoComplete="given-name" value={form.firstName} onChange={field("firstName")} />
+          <input className="input" autoComplete="given-name" value={form.firstName} onChange={contact("firstName")} />
         </label>
         <label className="field">
           Last name
-          <input className="input" autoComplete="family-name" value={form.lastName} onChange={field("lastName")} />
+          <input className="input" autoComplete="family-name" value={form.lastName} onChange={contact("lastName")} />
         </label>
       </div>
       <label className="field">
         Email
-        <input className="input" type="email" inputMode="email" autoComplete="email" value={form.email} onChange={field("email")} />
+        <input className="input" type="email" inputMode="email" autoComplete="email" value={form.email} onChange={contact("email")} />
       </label>
       {sponsor ? (
         <label className="field">
@@ -266,7 +275,7 @@ function CompanyStep({ slug, kind, data, pkg, form, set }: { slug: string; kind:
         </label>
       )}
       {sponsor ? <h2 style={{ ...h2, paddingTop: 6 }}>In the app</h2> : null}
-      <LogoBox slug={slug} kind={kind} form={form} set={set} />
+      <LogoBox slug={slug} kind={kind} uploadToken={data.uploadToken} form={form} set={set} />
       {sponsor ? (
         <label className="field">
           About your company
@@ -323,6 +332,15 @@ function CompanyStep({ slug, kind, data, pkg, form, set }: { slug: string; kind:
   );
 }
 
+/** Back to the step before: the same secondary button at the bottom of every step, above the footer. */
+function BackButton({ onClick, label = "Back" }: { onClick: () => void; label?: string }) {
+  return (
+    <button type="button" className="btn btn-sm btn-w" style={{ alignSelf: "flex-start", marginTop: 4 }} onClick={onClick}>
+      {label}
+    </button>
+  );
+}
+
 /* ---------- Step 4: payment ---------- */
 
 function methodWords(methods: PageData["page"]["methods"]) {
@@ -365,6 +383,14 @@ export function VendorCheckoutScreen({ slug, kind }: { slug: string; kind: Kind 
     update({ step });
     window.scrollTo(0, 0);
   };
+
+  // The first package that is not sold out starts picked.
+  const firstOpen = q.data?.packages.find((p) => !p.soldOut)?.id ?? null;
+  const pickedOk = !!q.data?.packages.some((p) => p.id === st.packageId && !p.soldOut);
+  useEffect(() => {
+    if (firstOpen !== null && !pickedOk) update({ packageId: firstOpen });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firstOpen, pickedOk]);
 
   if (q.isLoading) return <PageLoading />;
   if (q.error) return <div className="app"><ErrorNote error={q.error} /></div>;
@@ -442,9 +468,7 @@ export function VendorCheckoutScreen({ slug, kind }: { slug: string; kind: Kind 
         <Steps labels={labels} on={2} />
         <main className="app-body" style={{ paddingTop: 14 }}>
           <CompanyStep slug={slug} kind={kind} data={d} pkg={pkg} form={st.form} set={setForm} />
-          <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start" }} onClick={() => go(1)}>
-            Back
-          </button>
+          <BackButton onClick={() => go(1)} />
         </main>
         <div className="app-footer">
           {error ? <div className="err" role="alert">{error}</div> : null}
@@ -492,11 +516,8 @@ export function VendorCheckoutScreen({ slug, kind }: { slug: string; kind: Kind 
             update({ prep: { ...prep, agreement: { ...prep.agreement!, signed: true } }, step: 4 });
             window.scrollTo(0, 0);
           }}
-        >
-          <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start", marginBottom: -4 }} onClick={() => go(2)}>
-            Back
-          </button>
-        </SignAgreement>
+          bottom={<BackButton onClick={() => go(2)} />}
+        />
       </Frame>
     );
   }
@@ -589,18 +610,10 @@ export function VendorCheckoutScreen({ slug, kind }: { slug: string; kind: Kind 
         ) : null}
         {cantPay ? <div className="banner banner-warn">This page is not taking payments yet. Please try again later.</div> : null}
         <div className="muted" style={{ fontSize: 12, lineHeight: 1.5, textAlign: "center" }}>
-          {d.page.methods !== "card" && option !== "invoice" ? "Bank payments take up to 4 business days to clear. " : ""}
+          {option === "invoice" || d.page.methods === "card" ? "" : d.page.methods === "ach" ? "Bank payments take up to 4 business days to clear. " : "If you pay from a bank account, it takes up to 4 business days to clear. "}
           Payments go to {pay.businessName || ev.orgName} through Stripe.
         </div>
-        {secret ? (
-          <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start" }} onClick={() => setSecret(null)}>
-            Change how to pay
-          </button>
-        ) : (
-          <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start" }} onClick={() => go(2)}>
-            Back
-          </button>
-        )}
+        {secret ? <BackButton label="Change how to pay" onClick={() => setSecret(null)} /> : <BackButton onClick={() => go(2)} />}
       </main>
       {!secret ? (
         <div className="app-footer">

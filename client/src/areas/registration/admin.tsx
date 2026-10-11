@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useLocation, useSearch } from "wouter";
 import { trpc, type RouterOutputs } from "../../lib/trpc";
 import { AdminPage, useAdmin, useAdminEvent } from "../../shells/AdminShell";
-import { CopyButton, EditSection, Empty, ErrorNote, ExpandRow, Field, KV, Kpi, PageLoading, Pill, THead, UploadButton, confirmAction } from "../../ui/components";
+import { CopyButton, EditSection, Empty, ErrorNote, ExpandRow, Field, KV, PageLoading, Pill, THead, UploadButton, confirmAction, NumStrip } from "../../ui/components";
 import { IconCard } from "../../ui/icons";
 import { errorText, toast } from "../../ui/toast";
 import { fmtDate, fmtDates, fmtMoney, fmtTime, fmtWhen, slugify } from "@shared/format";
@@ -129,11 +129,13 @@ function TicketsTab({ event, canEdit }: { event: AdminEvent; canEdit: boolean })
   const s = summary.data;
   return (
     <>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
-        <Kpi label="Registered" value={s ? s.registered : ""} />
-        <Kpi label="Capacity" value={s ? (s.capacity ?? "No limit") : ""} />
-        <Kpi label="Revenue" value={s ? fmtMoney(s.revenueCents, "$0.00") : ""} />
-      </div>
+      <NumStrip
+        items={[
+          { label: "Registered", value: s ? s.registered : "" },
+          { label: "Capacity", value: s ? (s.capacity ?? "No limit") : "" },
+          { label: "Revenue", value: s ? fmtMoney(s.revenueCents, "$0.00") : "" },
+        ]}
+      />
 
       <div className="card card-pad col gap-8">
         <div className="row-between">

@@ -2,9 +2,10 @@
 import { useState } from "react";
 import { trpc, type RouterOutputs } from "../../lib/trpc";
 import { AdminPage, useAdminEvent } from "../../shells/AdminShell";
-import { CopyButton, EditSection, Empty, ErrorNote, ExpandRow, Field, FolderTabs, KV, Kpi, PageLoading, Pill, RichText, RichTextEditor, THead } from "../../ui/components";
+import { CopyButton, EditSection, Empty, ErrorNote, ExpandRow, Field, FolderTabs, KV, PageLoading, Pill, RichText, RichTextEditor, THead, NumStrip } from "../../ui/components";
 import { errorText, toast } from "../../ui/toast";
 import { eachDay, fmtDate, fmtWhen } from "@shared/format";
+import { SideSheet } from "./sponsor-ui";
 
 type ListData = RouterOutputs["network"]["proposals"]["admin"]["list"];
 type Proposal = ListData["proposals"][number];
@@ -159,16 +160,8 @@ function ProposalDetail({ p, data, reviewers }: { p: Proposal; data: ListData; r
   const ev = useAdminEvent();
   const utils = trpc.useUtils();
   const assign = trpc.network.proposals.admin.assign.useMutation();
-  const decide = trpc.network.proposals.admin.decide.useMutation();
-  const days = eachDay(data.eventDays.start, data.eventDays.end);
   const [chosen, setChosen] = useState<number[]>(p.reviews.map((r) => r.reviewerUserId));
   const [decision, setDecision] = useState<"accepted" | "waitlisted" | "declined" | null>(null);
-  const [note, setNote] = useState("");
-  const [email, setEmail] = useState(true);
-  const [addSession, setAddSession] = useState(!p.sessionId);
-  const [sendAgreement, setSendAgreement] = useState(data.speakerAgreement?.sendOnAccept ?? false);
-  const [welcomeAfterSign, setWelcomeAfterSign] = useState(true);
-  const [session, setSession] = useState({ date: days[0] ?? "", startTime: "10:00", endTime: /workshop|90/i.test(p.format) ? "11:30" : "11:00", room: "" });
   const assignedChanged = chosen.slice().sort().join() !== p.reviews.map((r) => r.reviewerUserId).sort().join();
 
   return (
@@ -279,113 +272,141 @@ function ProposalDetail({ p, data, reviewers }: { p: Proposal; data: ListData; r
         </div>
       ) : null}
 
-      <div className="col gap-10">
-        <span className="editor-title">Decision</span>
-        <div className="row gap-10">
-          {(
-            [
-              ["accepted", "Accept"],
-              ["waitlisted", "Waitlist"],
-              ["declined", "Decline"],
-            ] as const
-          ).map(([k, label]) => (
-            <button key={k} type="button" className={`btn btn-sm btn-w${decision === k ? " btn-solid" : ""}`} aria-pressed={decision === k} onClick={() => setDecision(decision === k ? null : k)}>
-              {label}
-            </button>
-          ))}
-        </div>
-        {decision ? (
-          <div className="col gap-10" style={{ background: "var(--brand-tint-2)", borderRadius: 10, padding: 14 }}>
-            {decision === "accepted" ? (
-              p.sessionId ? (
-                <span className="small strong" style={{ color: "var(--brand)" }}>This proposal is already in the program.</span>
-              ) : (
-                <>
-                  <label className="check">
-                    <input type="checkbox" checked={addSession} onChange={(e) => setAddSession(e.target.checked)} />
-                    Add the session and presenters to the program
-                  </label>
-                  {addSession ? (
-                    <div className="grid-4">
-                      <Field label="Day">
-                        <select className="select" value={session.date} onChange={(e) => setSession({ ...session, date: e.target.value })}>
-                          {days.map((d) => (
-                            <option key={d} value={d}>
-                              {fmtDate(d)}
-                            </option>
-                          ))}
-                        </select>
-                      </Field>
-                      <Field label="Starts">
-                        <input className="input" type="time" value={session.startTime} onChange={(e) => setSession({ ...session, startTime: e.target.value })} />
-                      </Field>
-                      <Field label="Ends">
-                        <input className="input" type="time" value={session.endTime} onChange={(e) => setSession({ ...session, endTime: e.target.value })} />
-                      </Field>
-                      <Field label="Room">
-                        <input className="input" value={session.room} maxLength={120} onChange={(e) => setSession({ ...session, room: e.target.value })} />
-                      </Field>
-                    </div>
-                  ) : null}
-                </>
-              )
-            ) : null}
-            <span className="label-caps">Emails</span>
-            <label className="check">
-              <input type="checkbox" checked={email} onChange={(e) => setEmail(e.target.checked)} />
-              {decision === "accepted" ? "Send the acceptance email" : `Email ${p.name} the decision`}
-            </label>
-            {decision === "accepted" && data.speakerAgreement && (p.sessionId || addSession) ? (
-              <>
-                <label className="check">
-                  <input type="checkbox" checked={sendAgreement} onChange={(e) => setSendAgreement(e.target.checked)} />
-                  Send the speaker agreement to sign
-                </label>
-                {sendAgreement ? (
-                  <label className="check">
-                    <input type="checkbox" checked={welcomeAfterSign} onChange={(e) => setWelcomeAfterSign(e.target.checked)} />
-                    Send the speaker welcome email after they sign
-                  </label>
-                ) : null}
-              </>
-            ) : null}
-            <Field label="Note in the email (optional)">
-              <textarea className="textarea" rows={3} maxLength={2000} value={note} onChange={(e) => setNote(e.target.value)} />
-            </Field>
-            <div className="row gap-10">
-              <button
-                className="btn btn-sm btn-solid btn-w-lg"
-                disabled={decide.isPending}
-                onClick={async () => {
-                  try {
-                    await decide.mutateAsync({
-                      eventId: ev.id,
-                      proposalId: p.id,
-                      decision,
-                      note: note.trim(),
-                      sendEmail: email,
-                      session: decision === "accepted" && addSession && !p.sessionId ? session : null,
-                      sendAgreement: decision === "accepted" && !!data.speakerAgreement && sendAgreement,
-                      welcomeAfterSign,
-                    });
-                    await utils.network.proposals.admin.list.invalidate();
-                    setDecision(null);
-                    toast(email ? "Decision sent" : "Decision saved");
-                  } catch (err) {
-                    toast(errorText(err), true);
-                  }
-                }}
-              >
-                {email ? "Send decision" : "Save decision"}
-              </button>
-              <button className="btn btn-sm btn-w" onClick={() => setDecision(null)}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        ) : null}
+      <div className="row gap-10">
+        <span className="editor-title grow">Decision</span>
+        <button type="button" className="btn btn-sm btn-solid btn-w" onClick={() => setDecision("accepted")}>
+          Decide
+        </button>
       </div>
+      <DecideSheet p={p} data={data} open={decision !== null} decision={decision ?? "accepted"} onDecision={setDecision} onClose={() => setDecision(null)} />
     </div>
+  );
+}
+
+const minutes = (t: string) => {
+  const [h, m] = t.split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+};
+const hhmm = (n: number) => `${String(Math.floor(Math.min(n, 1439) / 60)).padStart(2, "0")}:${String(Math.min(n, 1439) % 60).padStart(2, "0")}`;
+
+/** The Decide side sheet: Accept (with session time and room), Waitlist or Decline, the emails, and a note. */
+function DecideSheet({ p, data, open, decision, onDecision, onClose }: { p: Proposal; data: ListData; open: boolean; decision: "accepted" | "waitlisted" | "declined"; onDecision: (d: "accepted" | "waitlisted" | "declined") => void; onClose: () => void }) {
+  const ev = useAdminEvent();
+  const utils = trpc.useUtils();
+  const decide = trpc.network.proposals.admin.decide.useMutation();
+  const days = eachDay(data.eventDays.start, data.eventDays.end);
+  const length = /workshop|90/i.test(p.format) ? 90 : 60;
+  const [note, setNote] = useState("");
+  const [email, setEmail] = useState(true);
+  const [sendAgreement, setSendAgreement] = useState(data.speakerAgreement?.sendOnAccept ?? false);
+  const [welcomeAfterSign, setWelcomeAfterSign] = useState(true);
+  const [session, setSession] = useState({ date: days[0] ?? "", startTime: "10:00", room: "" });
+  const addSession = !p.sessionId;
+  const choices = [
+    ["accepted", "Accept"],
+    ["waitlisted", "Waitlist"],
+    ["declined", "Decline"],
+  ] as const;
+  const save = async () => {
+    try {
+      await decide.mutateAsync({
+        eventId: ev.id,
+        proposalId: p.id,
+        decision,
+        note: note.trim(),
+        sendEmail: email,
+        session: decision === "accepted" && addSession ? { ...session, endTime: hhmm(minutes(session.startTime) + length) } : null,
+        sendAgreement: decision === "accepted" && !!data.speakerAgreement && sendAgreement,
+        welcomeAfterSign,
+      });
+      await utils.network.proposals.admin.list.invalidate();
+      onClose();
+      toast(email ? "Decision sent" : "Decision saved");
+    } catch (err) {
+      toast(errorText(err), true);
+    }
+  };
+  return (
+    <SideSheet
+      open={open}
+      onClose={onClose}
+      title="Decide"
+      footer={
+        <>
+          <button type="button" className="btn btn-sm btn-solid btn-w" disabled={decide.isPending} onClick={save}>
+            Save
+          </button>
+          <button type="button" className="btn btn-sm btn-w" onClick={onClose}>
+            Cancel
+          </button>
+        </>
+      }
+    >
+      <div className="col" style={{ gap: 2 }}>
+        <span className="sp-caps">Proposal</span>
+        <span className="strong" style={{ marginTop: 6 }}>{p.title}</span>
+        <span className="small muted">
+          {p.name}
+          {p.credentials ? `, ${p.credentials}` : ""} · {p.email}
+        </span>
+      </div>
+      <span className="sp-caps">Decision</span>
+      {choices.map(([k, label]) => (
+        <div key={k} className="col gap-10">
+          <label className={`pay-choice${decision === k ? " on" : ""}`}>
+            <input type="radio" name={`decide-${p.id}`} checked={decision === k} onChange={() => onDecision(k)} />
+            <b>{label}</b>
+          </label>
+          {k === "accepted" && decision === "accepted" ? (
+            <div className="pay-more">
+              {addSession ? (
+                <div className="grid-2" style={{ gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)" }}>
+                  <Field label="Session time">
+                    <div className="row gap-6">
+                      <select className="select grow" style={{ minWidth: 0 }} aria-label="Day" value={session.date} onChange={(e) => setSession({ ...session, date: e.target.value })}>
+                        {days.map((d) => (
+                          <option key={d} value={d}>
+                            {fmtDate(d)}
+                          </option>
+                        ))}
+                      </select>
+                      <input className="input" type="time" style={{ width: 120, flexShrink: 0 }} aria-label="Starts" value={session.startTime} onChange={(e) => setSession({ ...session, startTime: e.target.value })} />
+                    </div>
+                  </Field>
+                  <Field label="Room">
+                    <input className="input" value={session.room} maxLength={120} onChange={(e) => setSession({ ...session, room: e.target.value })} />
+                  </Field>
+                </div>
+              ) : (
+                <span className="small strong" style={{ color: "var(--brand)" }}>This proposal is already in the program.</span>
+              )}
+            </div>
+          ) : null}
+        </div>
+      ))}
+      <span className="sp-caps">Emails</span>
+      <label className="check">
+        <input type="checkbox" checked={email} onChange={(e) => setEmail(e.target.checked)} />
+        {decision === "accepted" ? "Send the acceptance email" : `Email ${p.name} the decision`}
+      </label>
+      {decision === "accepted" && data.speakerAgreement ? (
+        <>
+          <label className="check">
+            <input type="checkbox" checked={sendAgreement} onChange={(e) => setSendAgreement(e.target.checked)} />
+            Send the speaker agreement to sign
+          </label>
+          {sendAgreement ? (
+            <label className="check">
+              <input type="checkbox" checked={welcomeAfterSign} onChange={(e) => setWelcomeAfterSign(e.target.checked)} />
+              Send the speaker welcome email after they sign
+            </label>
+          ) : null}
+        </>
+      ) : null}
+      <Field label="Note to the speaker (optional)">
+        <input className="input" value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} />
+      </Field>
+    </SideSheet>
   );
 }
 
@@ -427,12 +448,14 @@ function AdminView() {
           Assign reviewers evenly
         </button>
       </div>
-      <div className="grid-4">
-        <Kpi label="Submitted" value={data.stats.submitted} />
-        <Kpi label="Fully reviewed" value={data.stats.fullyReviewed} />
-        <Kpi label="Accepted" value={data.stats.accepted} />
-        <Kpi label="Declined" value={data.stats.declined} />
-      </div>
+      <NumStrip
+        items={[
+          { label: "Submitted", value: data.stats.submitted },
+          { label: "Fully reviewed", value: data.stats.fullyReviewed },
+          { label: "Accepted", value: data.stats.accepted },
+          { label: "Declined", value: data.stats.declined },
+        ]}
+      />
       <SettingsCard s={s} />
       <div>
         <FolderTabs<Filter>
@@ -586,10 +609,12 @@ function ReviewQueue() {
   const cols = "2.6fr 1fr 1.4fr 1fr 96px";
   return (
     <>
-      <div className="grid-4">
-        <Kpi label="Assigned to you" value={d.items.length} />
-        <Kpi label="Left to review" value={left} />
-      </div>
+      <NumStrip
+        items={[
+          { label: "Assigned to you", value: d.items.length },
+          { label: "Left to review", value: left, warn: left > 0 },
+        ]}
+      />
       {d.blind ? <div className="banner banner-ok">Blind review is on. Presenter names are hidden.</div> : null}
       <div className="table">
         <div className="table-inner">

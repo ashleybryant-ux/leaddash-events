@@ -52,4 +52,21 @@ describe("app look", () => {
     expect(emailButton("Open", "https://example.org", "#1F2A44")).toContain("color:#FFFFFF");
     expect(emailLayout({ brand: b.colorPrimary, accent: b.colorAccent, blocks: [], look: b })).toContain("font-family:'Lora',Georgia,serif");
   });
+
+  it("puts the event name in the email header in the event's header style", () => {
+    const base = { brand: "#1D4E89", accent: "#2BB3C0", blocks: [], eventName: "Annual Conference 2027" };
+    const solid = emailLayout({ ...base, look: { colorPrimary: "#1D4E89", colorAccent: "#2BB3C0", header: "solid" } });
+    expect(solid).toContain("background:#1D4E89;padding:18px 24px");
+    expect(solid).toMatch(/color:#FFFFFF">Annual Conference 2027</);
+    const light = emailLayout({ ...base, look: { colorPrimary: "#1D4E89", colorAccent: "#2BB3C0", header: "light" } });
+    expect(light).toContain("border-bottom:3px solid #1D4E89");
+    expect(light).toMatch(/color:#1D4E89">Annual Conference 2027</);
+    const cover = emailLayout({ ...base, coverUrl: "https://x.test/c.jpg", look: { colorPrimary: "#1D4E89", colorAccent: "#2BB3C0", header: "cover" } });
+    expect(cover).toContain("linear-gradient(rgba(0,0,0,0.45),rgba(0,0,0,0.45)),url('https://x.test/c.jpg')");
+    expect(cover).toContain("Annual Conference 2027");
+    // A cover header without a cover falls back to the solid band.
+    expect(emailLayout({ ...base, look: { colorPrimary: "#1D4E89", colorAccent: "#2BB3C0", header: "cover" } })).toContain("background:#1D4E89;padding:18px 24px");
+    // Without an event name: the old thin color bar.
+    expect(emailLayout({ brand: "#1D4E89", accent: "#2BB3C0", blocks: [] })).toContain("height:8px;background:#1D4E89");
+  });
 });

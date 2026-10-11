@@ -13,6 +13,7 @@ import { registerAreaHttp, registerAreaRawHttp } from "../areas";
 import { startScheduler } from "./scheduler";
 import { handleCallback } from "./platform";
 import { safeEqual, sign } from "./crypto";
+import { mayBeFramed } from "../areas/registration/http";
 
 async function startServer() {
   // Open the database and run pending migrations before taking traffic.
@@ -25,8 +26,8 @@ async function startServer() {
   app.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-    // The checkout embed is the one page other websites may frame.
-    if (!req.path.startsWith("/embed/")) res.setHeader("X-Frame-Options", "SAMEORIGIN");
+    // Pages other websites may frame: the checkout embed, and the sponsor and exhibitor checkout pages (their embed code).
+    if (!mayBeFramed(req.path)) res.setHeader("X-Frame-Options", "SAMEORIGIN");
     next();
   });
 

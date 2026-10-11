@@ -81,11 +81,18 @@ export const vendorPayments = sqliteTable(
     stripeAccountId: text("stripe_account_id"),
     stripeSessionId: text("stripe_session_id"),
     stripePaymentIntentId: text("stripe_payment_intent_id"),
+    /** Scheduled charges: the Stripe idempotency key, reused when Stripe did not answer (so a retry can never charge twice). */
+    stripeIdempotencyKey: text("stripe_idempotency_key"),
     failureReason: text("failure_reason").notNull().default(""),
     recordedBy: integer("recorded_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
   },
-  (t) => [index("vendor_payments_vendor").on(t.vendorId), index("vendor_payments_pi").on(t.stripePaymentIntentId)]
+  (t) => [
+    index("vendor_payments_vendor").on(t.vendorId),
+    index("vendor_payments_pi").on(t.stripePaymentIntentId),
+    // One payment per Stripe Checkout Session (empty for staff payments and scheduled charges).
+    uniqueIndex("vendor_payments_session").on(t.stripeSessionId),
+  ]
 );
 
 /** Settings for the public sponsor and exhibitor checkout pages (/r/:slug/sponsor, /r/:slug/exhibit). */
@@ -153,6 +160,8 @@ export const vendorCheckouts = sqliteTable(
     status: text("status", { enum: ["started", "pending", "paid", "failed", "expired", "invoice"] }).notNull().default("started"),
     stripeAccountId: text("stripe_account_id"),
     stripeSessionId: text("stripe_session_id").unique(),
+    /** When Pay was pressed: the package and add-ons are held for an hour from here. */
+    pendingAt: integer("pending_at", { mode: "timestamp_ms" }),
     vendorId: integer("vendor_id"),
     /** Random token in the confirmation link (/r/:slug/sponsor/done?c=). */
     doneToken: text("done_token").notNull().unique(),

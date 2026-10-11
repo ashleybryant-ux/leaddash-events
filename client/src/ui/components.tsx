@@ -295,12 +295,17 @@ export function ExpandRow({ cols, cells, open, onToggle, children, closedLabel =
 }
 
 /** Small stat card. */
-export function Kpi({ label, value, note, bad }: { label: string; value: ReactNode; note?: string; bad?: boolean }) {
+/** The thin number strip across the top of admin screens: label then bold number on one line, amber for warnings. */
+export function NumStrip({ items }: { items: { label: string; value: ReactNode; warn?: boolean; note?: string }[] }) {
   return (
-    <div className="kpi">
-      <span className="kpi-label">{label}</span>
-      <span className="kpi-value">{value}</span>
-      {note ? <span className="small strong" style={{ color: bad ? "var(--bad-ink)" : "var(--brand)" }}>{note}</span> : null}
+    <div className="num-strip">
+      {items.map((it) => (
+        <div key={it.label}>
+          <span>{it.label}</span>
+          <b className={it.warn ? "warn" : ""}>{it.value}</b>
+          {it.note ? <span className={`note${it.warn ? " warn" : ""}`}>{it.note}</span> : null}
+        </div>
+      ))}
     </div>
   );
 }

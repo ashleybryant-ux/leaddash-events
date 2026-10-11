@@ -73,6 +73,7 @@ async function sendStaffInvite(role: Role, user: { email: string; name: string }
       brand: ev.branding.colorPrimary,
       accent: ev.branding.colorAccent,
       look: ev.branding,
+      eventName: ev.name,
       title: `You are on the team for ${ev.shortName || ev.name}`,
       blocks: [
         `<p>You were added as <b>${escapeHtml(role.name)}</b> for ${escapeHtml(ev.name)}.</p>`,

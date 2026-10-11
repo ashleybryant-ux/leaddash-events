@@ -334,7 +334,7 @@ export function SlidesTab({ eventId, canEdit }: { eventId: number; canEdit: bool
               <span className="strong clip">{r.title}</span>
               <span className="small muted">{fmtDate(r.date)}, {fmtTime(r.startTime)}</span>
             </div>
-            <div className="clip">{r.speakers.join(", ") || <span className="muted">None yet</span>}</div>
+            <div className="clip" title={r.speakers.join(", ")}>{r.speakers.length ? (r.speakers.length > 1 ? `${r.speakers[0]} +${r.speakers.length - 1}` : r.speakers[0]) : <span className="muted">None yet</span>}</div>
             <div>{r.files.length ? <Pill>{r.files.length === 1 ? "1 file" : `${r.files.length} files`}</Pill> : <Pill tone="orange">Missing</Pill>}</div>
             <div>{SHARE_SHORT[r.slidesShare]}</div>
             {r.files.length ? (

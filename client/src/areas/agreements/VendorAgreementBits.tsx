@@ -1,4 +1,4 @@
-/** Agreement line in a sponsor's or exhibitor's details: View PDF, Resend, or Send agreement. */
+/** Agreement line in a sponsor's or exhibitor's details: View PDF and Resend (the sign link, or the signed copy once signed), or Send agreement. */
 import { trpc } from "../../lib/trpc";
 import { useAdmin, useAdminEvent } from "../../shells/AdminShell";
 import { errorText, toast } from "../../ui/toast";
@@ -17,6 +17,7 @@ export function VendorAgreementLine({ v }: { v: VendorLike }) {
   const canEdit = can("vendors", "edit");
   const templates = trpc.agreements.templates.list.useQuery({ eventId: ev.id }, { enabled: canEdit && !v.agreement, staleTime: 30_000 });
   const send = trpc.agreements.send.useMutation();
+  const resendCopy = trpc.agreements.resendVendorCopy.useMutation();
   const go = async () => {
     try {
       await send.mutateAsync({ eventId: ev.id, vendorId: v.id });
@@ -32,14 +33,30 @@ export function VendorAgreementLine({ v }: { v: VendorLike }) {
       <div className="sp-li">
         <span className="s2 grow">{a.templateName}</span>
         <span className="r">
-          {a.status !== "signed" && canEdit ? (
-            <button type="button" className="btn btn-sm btn-w" disabled={send.isPending} onClick={go}>
-              Resend
-            </button>
-          ) : null}
           <a className="btn btn-sm btn-w" href={`/agreement/${encodeURIComponent(a.code)}`} target="_blank" rel="noopener noreferrer">
             View PDF
           </a>
+          {canEdit ? (
+            <button
+              type="button"
+              className="btn btn-sm btn-w"
+              disabled={send.isPending || resendCopy.isPending}
+              onClick={
+                a.status === "signed"
+                  ? async () => {
+                      try {
+                        const r = await resendCopy.mutateAsync({ eventId: ev.id, vendorId: v.id });
+                        toast(`Signed copy sent to ${r.to}`);
+                      } catch (err) {
+                        toast(errorText(err), true);
+                      }
+                    }
+                  : go
+              }
+            >
+              Resend
+            </button>
+          ) : null}
         </span>
       </div>
     );
