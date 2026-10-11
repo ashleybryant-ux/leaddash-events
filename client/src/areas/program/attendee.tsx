@@ -283,13 +283,21 @@ export function MyAgendaScreen() {
               const st = STATUS[i.status];
               return (
                 <div key={i.id} className="card col" style={{ padding: 14, gap: 10 }}>
-                  <div className="row-between" style={{ alignItems: "flex-start" }}>
-                    <Link href={`${base}/session/${i.id}`} className="col" style={{ gap: 4, textDecoration: "none", color: "inherit" }}>
-                      <div style={{ fontSize: 15, fontWeight: 700 }}>{i.title}</div>
+                  <div className="row" style={{ alignItems: "flex-start", gap: 12 }}>
+                    {i.speakerPhotos.length ? (
+                      <Link href={`${base}/session/${i.id}`} className={`agenda-faces${i.speakerPhotos.length > 1 ? " two" : ""}`} aria-hidden="true" tabIndex={-1}>
+                        {i.speakerPhotos.map((p) => (
+                          <Avatar key={p.name} url={p.headshotUrl} name={p.name} size={i.speakerPhotos.length > 1 ? 52 : 72} />
+                        ))}
+                      </Link>
+                    ) : null}
+                    <Link href={`${base}/session/${i.id}`} className="grow col" style={{ gap: 6, textDecoration: "none", color: "inherit", minWidth: 0 }}>
+                      <div style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.3 }}>{i.title}</div>
                       <div className="muted" style={{ fontSize: 13 }}>
                         {fmtRange(i.startTime, i.endTime)}
                         {i.room ? ` · ${i.room}` : ""}
                       </div>
+                      {i.speakers.length ? <div className="muted" style={{ fontSize: 13 }}>{i.speakers.join(", ")}</div> : null}
                     </Link>
                     <Pill tone={st.tone}>{st.label}</Pill>
                   </div>

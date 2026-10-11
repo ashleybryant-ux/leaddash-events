@@ -360,6 +360,7 @@ export const sessionsRouter = router({
       .where(and(eq(schema.certificates.attendeeId, attendee.id), eq(schema.certificates.eventId, event.id), isNull(schema.certificates.revokedAt)))
       .all();
     const certified = new Set(certs.map((c) => c.sessionId));
+    const speakers = speakersBySession(items.map((r) => r.s.id));
     const now = Date.now();
     return {
       stats: { sessions: items.length, attended: checked.size, ceEarned: certs.reduce((a, c) => a + c.hours, 0) },
@@ -384,6 +385,8 @@ export const sessionsRouter = router({
           canCheckIn: !isIn && now >= startsAt - 30 * 60_000 && now <= endsAt,
           evaluationOpen: evalOpen,
           conflicts,
+          speakers: (speakers.get(s.id) ?? []).map((p) => p.name),
+          speakerPhotos: (speakers.get(s.id) ?? []).slice(0, 2).map((p) => ({ name: p.name, headshotUrl: p.headshotUrl })),
         };
       }),
     };

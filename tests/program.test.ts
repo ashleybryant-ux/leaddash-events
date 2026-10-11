@@ -197,6 +197,10 @@ describe("program", () => {
     expect(detail.speakers[0]).toMatchObject({ name: "Taylor Reed, PhD", role: "presenter" });
     const agenda = await api.program.sessions.agenda({ slug: event.slug });
     expect(agenda.sessions.find((x) => x.id === s.id)?.speakerPhotos).toEqual([{ name: "Taylor Reed, PhD", headshotUrl: null }]);
+    // My agenda shows the same speaker photo and names.
+    await api.program.sessions.add({ slug: event.slug, sessionId: s.id });
+    const my = await api.program.sessions.my({ slug: event.slug });
+    expect(my.items[0]).toMatchObject({ speakers: ["Taylor Reed, PhD"], speakerPhotos: [{ name: "Taylor Reed, PhD", headshotUrl: null }] });
   });
 
   it("lets admins save branding, features and the host page", async () => {
