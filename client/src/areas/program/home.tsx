@@ -205,6 +205,7 @@ export function HomeScreen() {
   const hasMaps = !!maps.data?.length;
   // Up to eight round shortcuts in rows of four; everything else goes in the list under More.
   const shortcuts: Item[] = [
+    { label: "Agenda", href: `${base}/agenda`, icon: <IconCalendar size={24} />, show: true },
     { label: "My agenda", href: `${base}/my`, icon: <IconBookmark size={24} />, show: !!me.attendee },
     { label: "Speakers", href: `${base}/speakers`, icon: <IconMic size={24} />, show: true },
     { label: "Sponsors", href: `${base}/exhibitors?tab=sponsors`, icon: <IconStar size={24} />, show: f.exhibitors },
