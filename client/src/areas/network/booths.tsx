@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { trpc, type RouterOutputs } from "../../lib/trpc";
 import { AppScreen, BackBar, useEventApp } from "../../shells/AttendeeShell";
-import { Empty, ErrorNote, Field, PageLoading } from "../../ui/components";
+import { Empty, ErrorNote, Field, Lightbox, PageLoading, Spinner } from "../../ui/components";
 import { IconSearch } from "../../ui/icons";
 import { errorText, toast } from "../../ui/toast";
 import { fmtWhen } from "@shared/format";
@@ -59,6 +59,7 @@ export function ExhibitorsScreen() {
   const exhibitors = all.filter((v) => v.kind !== "sponsor");
   const levels = Array.from(new Set(sponsors.map((v) => v.level || "Sponsors")));
   const canMessage = (v: Vendor) => event.features.messaging && v.canMessage;
+  const [openId, setOpenId] = useState<number | null>(null);
 
   return (
     <AppScreen
@@ -96,14 +97,14 @@ export function ExhibitorsScreen() {
                     .filter((v) => (v.level || "Sponsors") === level)
                     .map((v) => (
                       <div key={v.id} className="card col" style={{ padding: 14, gap: 10 }}>
-                        <Link href={`${base}/exhibitors/${v.id}`} style={{ height: 70, borderRadius: 10, background: v.logoUrl ? "#FFFFFF" : "var(--brand-tint)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", textDecoration: "none", color: "var(--brand)", fontWeight: 800, fontSize: 18 }}>
+                        <button type="button" aria-label={`About ${v.company}`} onClick={() => setOpenId(v.id)} style={{ height: 70, width: "100%", border: "none", cursor: "pointer", borderRadius: 10, background: v.logoUrl ? "#FFFFFF" : "var(--brand-tint)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", color: "var(--brand)", fontWeight: 800, fontSize: 18, fontFamily: "inherit" }}>
                           {v.logoUrl ? <img src={v.logoUrl} alt={`${v.company} logo`} style={{ maxHeight: 62, maxWidth: "90%", objectFit: "contain" }} /> : v.company}
-                        </Link>
+                        </button>
                         <div className="row-between">
-                          <Link href={`${base}/exhibitors/${v.id}`} className="col grow" style={{ gap: 2, textDecoration: "none", color: "inherit" }}>
+                          <button type="button" onClick={() => setOpenId(v.id)} className="col grow" style={{ gap: 2, border: "none", background: "none", padding: 0, textAlign: "left", cursor: "pointer", color: "inherit", fontFamily: "inherit" }}>
                             <span style={{ fontSize: 15, fontWeight: 800 }}>{v.company}</span>
                             {vendorLine(v) ? <span className="small muted">{vendorLine(v)}</span> : null}
-                          </Link>
+                          </button>
                           {canMessage(v) ? (
                             <button className="btn btn-sm" style={msgBtn} disabled={msg.pending} onClick={() => msg.open(v.id)}>
                               Message
@@ -121,13 +122,13 @@ export function ExhibitorsScreen() {
               <div className="card list" style={{ overflow: "hidden" }}>
                 {exhibitors.map((v) => (
                   <div key={v.id} className="row" style={{ padding: "12px 14px", gap: 12 }}>
-                    <Link href={`${base}/exhibitors/${v.id}`} className="row grow" style={{ gap: 12, textDecoration: "none", color: "inherit" }}>
+                    <button type="button" onClick={() => setOpenId(v.id)} className="row grow" style={{ gap: 12, border: "none", background: "none", padding: 0, textAlign: "left", cursor: "pointer", color: "inherit", fontFamily: "inherit" }}>
                       <Logo v={v} />
                       <span className="grow col" style={{ gap: 2 }}>
                         <span style={{ fontSize: 14, fontWeight: 700 }}>{v.company}</span>
                         {vendorLine(v) ? <span className="small muted">{vendorLine(v)}</span> : null}
                       </span>
-                    </Link>
+                    </button>
                     {canMessage(v) ? (
                       <button className="btn btn-sm" style={msgBtn} disabled={msg.pending} onClick={() => msg.open(v.id)}>
                         Message
@@ -142,7 +143,75 @@ export function ExhibitorsScreen() {
           {tab === "exhibitors" && !exhibitors.length ? <Empty>No exhibitors listed yet.</Empty> : null}
         </>
       )}
+      <VendorLightbox vendorId={openId} onClose={() => setOpenId(null)} />
     </AppScreen>
+  );
+}
+
+/**
+ * A sponsor or exhibitor popping out as a lightbox over the list (no navigation):
+ * the logo large at the top, then the level, booth, offer, about, and Message, Find booth and website buttons.
+ */
+function VendorLightbox({ vendorId, onClose }: { vendorId: number | null; onClose: () => void }) {
+  const { slug, base, event } = useEventApp();
+  const v = trpc.network.exhibitors.get.useQuery({ slug, vendorId: vendorId ?? 0 }, { enabled: !!vendorId });
+  const msg = useMessageVendor();
+  const d = vendorId && v.data?.id === vendorId ? v.data : null;
+  const site = d?.website ? (/^https?:\/\//i.test(d.website) ? d.website : `https://${d.website}`) : "";
+  return (
+    <Lightbox open={!!vendorId} onClose={onClose} label={d ? `About ${d.company}` : "About this sponsor"}>
+      {!d ? (
+        v.error ? (
+          <div className="lightbox-body"><ErrorNote error={v.error} /></div>
+        ) : (
+          <div className="center" style={{ padding: 40 }}>
+            <Spinner />
+          </div>
+        )
+      ) : (
+        <>
+          {d.logoUrl ? (
+            <div className="lightbox-logo">
+              <img src={d.logoUrl} alt={`${d.company} logo`} />
+            </div>
+          ) : (
+            <div className="lightbox-initials" aria-hidden="true">{d.company.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("")}</div>
+          )}
+          <div className="lightbox-body">
+            <div className="col" style={{ gap: 4 }}>
+              {d.sponsor && d.level ? <span className="pill" style={{ alignSelf: "flex-start" }}>{d.level}</span> : null}
+              <span style={{ fontSize: 22, fontWeight: 800, lineHeight: 1.25 }}>{d.company}</span>
+              {vendorLine(d) ? <span className="muted" style={{ fontSize: 13.5 }}>{vendorLine(d)}</span> : null}
+            </div>
+            {d.offer ? (
+              <div className="banner banner-ok" style={{ justifyContent: "flex-start" }}>
+                {d.offer}
+              </div>
+            ) : null}
+            {d.description ? <div style={{ fontSize: 14, lineHeight: 1.55, color: "var(--ink-2)", whiteSpace: "pre-wrap" }}>{d.description}</div> : null}
+            {(event.features.messaging && d.canMessage) || d.booth ? (
+              <div className="grid-2">
+                {event.features.messaging && d.canMessage ? (
+                  <button className="btn btn-primary" style={{ height: 46 }} disabled={msg.pending} onClick={() => msg.open(d.id)}>
+                    Message
+                  </button>
+                ) : null}
+                {d.booth ? (
+                  <Link href={`${base}/map?q=${encodeURIComponent(`Booth ${d.booth}`)}`} className="btn" style={{ height: 46 }} onClick={onClose}>
+                    Find booth
+                  </Link>
+                ) : null}
+              </div>
+            ) : null}
+            {site ? (
+              <a className="btn btn-block" style={{ height: 46 }} href={site} target="_blank" rel="noopener noreferrer">
+                Visit website
+              </a>
+            ) : null}
+          </div>
+        </>
+      )}
+    </Lightbox>
   );
 }
 
