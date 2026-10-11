@@ -1,6 +1,21 @@
 import { describe, it, expect } from "vitest";
-import { brandWarnings, buttonInk, colorsFromPixels, contrast, lookOf, readableOn, themeVars, THEMES } from "@shared/brand";
+import { brandWarnings, buttonInk, colorsFromPixels, contrast, highlightOf, highlightText, lookOf, readableOn, themeVars, THEMES } from "@shared/brand";
 import { emailButton, emailLayout } from "../server/_core/email";
+
+describe("highlight color", () => {
+  it("falls back to the main color, keeps text readable, and stripes the header and emails", () => {
+    expect(highlightOf({ colorPrimary: "#1F5F4A" })).toBe("#1F5F4A");
+    expect(highlightOf({ colorPrimary: "#1F5F4A", colorHighlight: "#D4A017" })).toBe("#D4A017");
+    expect(contrast(highlightText("#F2C14E"), "#FFFFFF")).toBeGreaterThanOrEqual(4.5);
+    const v = themeVars({ colorPrimary: "#5B2A6E", colorAccent: "#E2B33C", colorHighlight: "#2A9D8F" });
+    expect(v).toMatchObject({ "--highlight": "#2A9D8F", "--header-border": "#2A9D8F" });
+    expect(themeVars({ colorPrimary: "#5B2A6E", colorAccent: "#E2B33C" })).toMatchObject({ "--highlight": "#5B2A6E", "--header-border": "transparent" });
+    expect(THEMES.every((t) => /^#[0-9A-F]{6}$/i.test(t.colorHighlight))).toBe(true);
+    const html = emailLayout({ brand: "#5B2A6E", accent: "#E2B33C", eventName: "Annual Conference 2027", look: { colorPrimary: "#5B2A6E", colorAccent: "#E2B33C", colorHighlight: "#2A9D8F" }, blocks: ["<p>Hi</p>"] });
+    expect(html).toContain("background:#2A9D8F");
+    expect(emailLayout({ brand: "#5B2A6E", accent: "#E2B33C", eventName: "Annual Conference 2027", look: { colorPrimary: "#5B2A6E", colorAccent: "#E2B33C" }, blocks: [] })).not.toContain("height:4px");
+  });
+});
 
 describe("app look", () => {
   it("picks readable text and builds the page variables", () => {

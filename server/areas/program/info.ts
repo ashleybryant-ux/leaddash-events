@@ -213,6 +213,7 @@ export const brandingRouter = router({
       appName: b.appName || ev.shortName || ev.name,
       colorPrimary: b.colorPrimary,
       colorAccent: b.colorAccent,
+      colorHighlight: b.colorHighlight ?? "",
       look: lookOf(b),
       logoFileId: b.logoFileId ?? null,
       logoUrl: fileUrl(b.logoFileId),
@@ -233,6 +234,8 @@ export const brandingRouter = router({
         appName: z.string().trim().max(60),
         colorPrimary: hex,
         colorAccent: hex,
+        /** Third color for small accents. Left out by older screens: the saved one stays. Empty means the main color. */
+        colorHighlight: hex.or(z.literal("")).optional(),
         /** How attendee-facing pages look. Left out by older screens: the saved look stays. */
         look: z
           .object({
@@ -268,6 +271,7 @@ export const brandingRouter = router({
         appName: input.appName,
         colorPrimary: input.colorPrimary,
         colorAccent: input.colorAccent,
+        colorHighlight: input.colorHighlight ?? (ev.branding as BrandingExtra).colorHighlight ?? "",
         ...lookOf(input.look ?? (ev.branding as BrandingExtra)),
         logoFileId: input.logoFileId,
         coverFileId: input.coverFileId,

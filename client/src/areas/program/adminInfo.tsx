@@ -1305,7 +1305,7 @@ async function colorsFromLogo(url: string) {
   return colorsFromPixels(g.getImageData(0, 0, 64, 64).data);
 }
 
-type LookDraft = { colorPrimary: string; colorAccent: string } & Look;
+type LookDraft = { colorPrimary: string; colorAccent: string; colorHighlight: string } & Look;
 
 /** /admin/e/:eventId/branding */
 export function AdminBrandingScreen() {
@@ -1324,7 +1324,7 @@ export function AdminBrandingScreen() {
   if (q.isLoading) return <AdminPage title={event.name} sub={dateSub(event)}><PageLoading /></AdminPage>;
   if (q.error) return <AdminPage title={event.name} sub={dateSub(event)}><ErrorNote error={q.error} /></AdminPage>;
   const b = q.data!;
-  const savedLook: LookDraft = { colorPrimary: b.colorPrimary, colorAccent: b.colorAccent, ...b.look };
+  const savedLook: LookDraft = { colorPrimary: b.colorPrimary, colorAccent: b.colorAccent, colorHighlight: b.colorHighlight ?? "", ...b.look };
   const savedIdent = { appName: b.appName, logoFileId: b.logoFileId, logoUrl: b.logoUrl, coverFileId: b.coverFileId, coverUrl: b.coverUrl, iconFileId: b.iconFileId, iconUrl: b.iconUrl };
   const savedBadge: Badge = { ...b.badge, bandColors: b.badge.bandColors as Bands };
   const L = look ?? savedLook;
@@ -1336,7 +1336,7 @@ export function AdminBrandingScreen() {
   const setB = (patch: Partial<Badge>) => setBadge({ ...B, ...patch });
   const appUrl = `${window.location.origin}/e/${b.slug}`;
   const warnings = brandWarnings(L);
-  const theme = THEMES.find((t) => t.colorPrimary.toUpperCase() === L.colorPrimary.toUpperCase() && t.colorAccent.toUpperCase() === L.colorAccent.toUpperCase());
+  const theme = THEMES.find((t) => t.colorPrimary.toUpperCase() === L.colorPrimary.toUpperCase() && t.colorAccent.toUpperCase() === L.colorAccent.toUpperCase() && t.colorHighlight.toUpperCase() === (L.colorHighlight || "").toUpperCase());
   const [first, ...rest] = (me.name || "Taylor Reed").split(" ");
   const sampleLast = rest.join(" ") || "Reed";
   const onFeatures = FEATURE_LABELS.filter((x) => b.features[x.key]).map((x) => x.label);
@@ -1346,12 +1346,13 @@ export function AdminBrandingScreen() {
     const lk = parts.look ?? savedLook;
     const id = parts.ident ?? savedIdent;
     const bd = parts.badge ?? savedBadge;
-    if (!HEX.test(lk.colorPrimary) || !HEX.test(lk.colorAccent) || !Object.values(bd.bandColors).every((c) => HEX.test(c))) throw new Error("Colors look like #1F5F4A.");
+    if (!HEX.test(lk.colorPrimary) || !HEX.test(lk.colorAccent) || (lk.colorHighlight && !HEX.test(lk.colorHighlight)) || !Object.values(bd.bandColors).every((c) => HEX.test(c))) throw new Error("Colors look like #1F5F4A.");
     await save.mutateAsync({
       eventId: event.id,
       appName: id.appName,
       colorPrimary: lk.colorPrimary,
       colorAccent: lk.colorAccent,
+      colorHighlight: lk.colorHighlight,
       look: { header: lk.header, buttonShape: lk.buttonShape, font: lk.font, buttonText: lk.buttonText, background: lk.background, textSize: lk.textSize },
       logoFileId: id.logoFileId,
       coverFileId: id.coverFileId,
@@ -1384,6 +1385,7 @@ export function AdminBrandingScreen() {
         { label: "Theme", value: theme?.name ?? "Custom" },
         { label: "Main color", value: <span className="row gap-6"><span style={{ width: 14, height: 14, borderRadius: 4, background: b.colorPrimary }} />{b.colorPrimary}</span> },
         { label: "Button color", value: <span className="row gap-6"><span style={{ width: 14, height: 14, borderRadius: 4, background: b.colorAccent }} />{b.colorAccent}</span> },
+        { label: "Highlight color", value: b.colorHighlight ? <span className="row gap-6"><span style={{ width: 14, height: 14, borderRadius: 4, background: b.colorHighlight }} />{b.colorHighlight}</span> : <span className="muted">Same as main color</span> },
         { label: "Button text", value: BUTTON_TEXT_LABELS[b.look.buttonText] },
         { label: "Page background", value: BACKGROUND_LABELS[b.look.background] },
         { label: "Text size", value: TEXT_SIZE_LABELS[b.look.textSize] },
@@ -1404,10 +1406,11 @@ export function AdminBrandingScreen() {
           {THEMES.map((t) => {
             const on = theme?.name === t.name;
             return (
-              <button key={t.name} type="button" role="radio" aria-checked={on} onClick={() => setL({ colorPrimary: t.colorPrimary, colorAccent: t.colorAccent })} style={{ display: "flex", flexDirection: "column", gap: 6, padding: on ? 7 : 8, borderRadius: 10, border: on ? "2px solid var(--brand)" : "1px solid var(--line)", background: "#FFFFFF", cursor: "pointer", alignItems: "stretch" }}>
+              <button key={t.name} type="button" role="radio" aria-checked={on} onClick={() => setL({ colorPrimary: t.colorPrimary, colorAccent: t.colorAccent, colorHighlight: t.colorHighlight })} style={{ display: "flex", flexDirection: "column", gap: 6, padding: on ? 7 : 8, borderRadius: 10, border: on ? "2px solid var(--brand)" : "1px solid var(--line)", background: "#FFFFFF", cursor: "pointer", alignItems: "stretch" }}>
                 <span style={{ display: "flex", height: 28, borderRadius: 6, overflow: "hidden" }}>
                   <span style={{ flex: 2, background: t.colorPrimary }} />
                   <span style={{ flex: 1, background: t.colorAccent }} />
+                  <span style={{ flex: 1, background: t.colorHighlight }} />
                 </span>
                 <span className="small strong" style={{ color: "var(--ink)", textAlign: "left" }}>{t.name}</span>
               </button>
@@ -1416,8 +1419,9 @@ export function AdminBrandingScreen() {
         </div>
       </div>
       <div className="grid-3">
-        <ColorField label="Main color" value={L.colorPrimary} onChange={(v) => setL({ colorPrimary: v })} hint="Header, menu, links, dates" />
+        <ColorField label="Main color" value={L.colorPrimary} onChange={(v) => setL({ colorPrimary: v })} hint="Header, menu, dates" />
         <ColorField label="Button color" value={L.colorAccent} onChange={(v) => setL({ colorAccent: v })} hint="Register, Add to my agenda" />
+        <ColorField label="Highlight color" value={L.colorHighlight || L.colorPrimary} onChange={(v) => setL({ colorHighlight: v })} hint={L.colorHighlight ? "Tags, links, selected tab" : "Same as main color until you pick one"} />
         <Field label="Button text" hint="Picks what is easy to read">
           <select className="select" value={L.buttonText} onChange={(e) => setL({ buttonText: e.target.value as Look["buttonText"] })}>
             {LOOK_BUTTON_TEXT.map((k) => <option key={k} value={k}>{BUTTON_TEXT_LABELS[k]}</option>)}
@@ -1710,7 +1714,7 @@ function AppPreview({ look, appName, logoUrl, coverUrl }: { look: LookDraft; app
             <span style={{ fontSize: 11, fontWeight: 700, color: "var(--brand)" }}>{s.time}</span>
             <span style={{ fontSize: 13, fontWeight: 800, color: "var(--ink)" }}>{s.title}</span>
             <span style={{ fontSize: 11, color: "var(--muted)" }}>
-              {s.room} · <span style={{ color: "var(--brand)", background: "var(--brand-tint)", borderRadius: 4, padding: "1px 6px", fontWeight: 700 }}>{s.track}</span>
+              {s.room} · <span style={{ color: "var(--highlight-text)", background: "var(--highlight-tint)", borderRadius: 4, padding: "1px 6px", fontWeight: 700 }}>{s.track}</span>
             </span>
             <div>
               {s.added ? (
@@ -1724,8 +1728,8 @@ function AppPreview({ look, appName, logoUrl, coverUrl }: { look: LookDraft; app
       </div>
       <div style={{ background: "#FFFFFF", borderTop: "1px solid var(--line)", padding: "8px 6px 10px", display: "flex", justifyContent: "space-around" }}>
         {["Agenda", "My agenda", "Community", "Messages", "More"].map((n, i) => (
-          <span key={n} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 700, color: i === 0 ? "var(--brand)" : "#7A8A85" }}>
-            <span style={{ width: 18, height: 18, borderRadius: 5, background: i === 0 ? "var(--brand)" : "#C9D5D0" }} />
+          <span key={n} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 700, color: i === 0 ? "var(--highlight-text)" : "#7A8A85" }}>
+            <span style={{ width: 18, height: 18, borderRadius: 5, background: i === 0 ? "var(--highlight)" : "#C9D5D0" }} />
             {n}
           </span>
         ))}

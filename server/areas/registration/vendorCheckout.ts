@@ -351,7 +351,7 @@ function publicInfo(ev: EventRow) {
     venueName: ev.venueName,
     city: ev.city,
     orgName: org.name,
-    branding: { colorPrimary: ev.branding.colorPrimary, colorAccent: ev.branding.colorAccent, ...lookOf(ev.branding) },
+    branding: { colorPrimary: ev.branding.colorPrimary, colorAccent: ev.branding.colorAccent, colorHighlight: ev.branding.colorHighlight ?? "", ...lookOf(ev.branding) },
     logoUrl: fileUrl(ev.branding.logoFileId ?? org.logoFileId),
     coverUrl: fileUrl(cp?.coverFileId ?? ev.branding.coverFileId),
   };

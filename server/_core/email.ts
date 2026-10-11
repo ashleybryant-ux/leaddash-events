@@ -130,7 +130,9 @@ function emailHeader(opts: { brand: string; coverUrl?: string | null; eventName?
  * Pass `eventName` to show the event name in the header.
  */
 export function emailLayout(opts: { brand: string; accent: string; coverUrl?: string | null; eventName?: string | null; title?: string; blocks: string[]; footer?: string; look?: BrandLike }) {
-  const cover = emailHeader(opts);
+  const hl = opts.look?.colorHighlight && /^#[0-9a-fA-F]{6}$/.test(opts.look.colorHighlight) ? opts.look.colorHighlight : "";
+  // The event's highlight color (its third brand color) as a thin stripe under the header.
+  const cover = emailHeader(opts) + (hl && opts.eventName ? `<div style="height:4px;line-height:4px;font-size:0;background:${hl}">&nbsp;</div>` : "");
   return `<!doctype html><html><body style="margin:0;background:#F8FAFB;font-family:${emailFont(opts.look).replace(/"/g, "'")};color:#0F2A23">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px">
 <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#FFFFFF;border:1px solid #E1E8E5;border-radius:14px;overflow:hidden">

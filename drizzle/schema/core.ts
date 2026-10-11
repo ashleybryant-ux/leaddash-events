@@ -17,6 +17,8 @@ export const organizations = sqliteTable("organizations", {
   /** Brand colors used by the member app and the checkout page. */
   colorPrimary: text("color_primary").notNull().default("#1F5F4A"),
   colorAccent: text("color_accent").notNull().default("#e88a3a"),
+  /** Third brand color for small accents (tags, links, the active tab). Empty means the main color. */
+  colorHighlight: text("color_highlight").notNull().default(""),
   /** LeadDash platform (GoHighLevel) sub-account this association mirrors contacts into. */
   platformLocationId: text("platform_location_id"),
   createdAt: createdAt(),
@@ -75,6 +77,8 @@ export const orgMembers = sqliteTable(
 export type EventBranding = Partial<Look> & {
   colorPrimary: string;
   colorAccent: string;
+  /** Third color for small accents (tags, links, the active tab). Empty or missing means the main color. */
+  colorHighlight?: string;
   logoFileId?: number | null;
   coverFileId?: number | null;
   appName?: string;

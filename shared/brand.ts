@@ -33,7 +33,7 @@ export type Look = {
 export const DEFAULT_LOOK: Look = { header: "solid", buttonShape: "rounded", font: "jakarta", buttonText: "auto", background: "gray", textSize: "standard" };
 
 /** Any branding object: only the two colors are required; look fields fall back to the defaults. */
-export type BrandLike = { colorPrimary: string; colorAccent: string } & Partial<Look>;
+export type BrandLike = { colorPrimary: string; colorAccent: string; colorHighlight?: string } & Partial<Look>;
 
 export const FONTS: Record<LookFont, { label: string; css: string; google: string | null }> = {
   jakarta: { label: "Plus Jakarta Sans", css: '"Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif', google: null },
@@ -49,15 +49,27 @@ export const BUTTON_TEXT_LABELS: Record<LookButtonText, string> = { auto: "Autom
 export const BACKGROUND_LABELS: Record<LookBackground, string> = { gray: "Light gray", white: "White" };
 export const TEXT_SIZE_LABELS: Record<LookTextSize, string> = { standard: "Standard", larger: "Larger" };
 
-/** Ready-made color pairs: main color and button color. */
-export const THEMES: { name: string; colorPrimary: string; colorAccent: string }[] = [
-  { name: "Forest", colorPrimary: "#1F5F4A", colorAccent: "#E88A3A" },
-  { name: "Ocean", colorPrimary: "#1D4E89", colorAccent: "#2BB3C0" },
-  { name: "Plum", colorPrimary: "#5B2A6E", colorAccent: "#E2B33C" },
-  { name: "Crimson", colorPrimary: "#8C1D2C", colorAccent: "#1F2A44" },
-  { name: "Charcoal", colorPrimary: "#2B2F36", colorAccent: "#3FA36B" },
-  { name: "Royal", colorPrimary: "#2F2A8A", colorAccent: "#F2C14E" },
+/** Ready-made color sets: main color, button color and highlight color. */
+export const THEMES: { name: string; colorPrimary: string; colorAccent: string; colorHighlight: string }[] = [
+  { name: "Forest", colorPrimary: "#1F5F4A", colorAccent: "#E88A3A", colorHighlight: "#2C8C99" },
+  { name: "Ocean", colorPrimary: "#1D4E89", colorAccent: "#2BB3C0", colorHighlight: "#D9822B" },
+  { name: "Plum", colorPrimary: "#5B2A6E", colorAccent: "#E2B33C", colorHighlight: "#2A9D8F" },
+  { name: "Crimson", colorPrimary: "#8C1D2C", colorAccent: "#1F2A44", colorHighlight: "#B8860B" },
+  { name: "Charcoal", colorPrimary: "#2B2F36", colorAccent: "#3FA36B", colorHighlight: "#C2410C" },
+  { name: "Royal", colorPrimary: "#2F2A8A", colorAccent: "#F2C14E", colorHighlight: "#D6336C" },
 ];
+
+/** The highlight color, or the main color when none is set. */
+export function highlightOf(b: Pick<BrandLike, "colorPrimary" | "colorHighlight">) {
+  return b.colorHighlight && isHex(b.colorHighlight) ? b.colorHighlight : isHex(b.colorPrimary) ? b.colorPrimary : "#1F5F4A";
+}
+
+/** The highlight color made dark enough to read as text on white. */
+export function highlightText(hex: string) {
+  let c = hex;
+  for (let i = 0; i < 6 && contrast(c, WHITE) < 4.5; i++) c = mix(c, "#000000", 0.18);
+  return c;
+}
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
 export const isHex = (v: string) => HEX.test(v);
@@ -138,6 +150,10 @@ export function themeVars(b: BrandLike, coverUrl?: string | null): Record<string
     "--on-brand": onBrand,
     "--accent": accent,
     "--accent-ink": buttonInk({ ...b, colorAccent: accent }),
+    "--highlight": highlightOf(b),
+    "--highlight-text": highlightText(highlightOf(b)),
+    "--highlight-tint": mix(highlightOf(b), WHITE, 0.86),
+    "--highlight-ink": readableOn(highlightOf(b)),
     "--btn-radius": SHAPE_RADIUS[look.buttonShape],
     "--app-font": FONTS[look.font].css,
     "--app-bg": look.background === "white" ? WHITE : "#F8FAFB",
@@ -177,7 +193,7 @@ export function themeVars(b: BrandLike, coverUrl?: string | null): Record<string
       "--header-image": "none",
       "--header-ink": onBrand,
       "--header-sub": onBrand === WHITE ? mix(brand, WHITE, 0.75) : "#24433A",
-      "--header-border": "transparent",
+      "--header-border": b.colorHighlight && isHex(b.colorHighlight) ? b.colorHighlight : "transparent",
       "--seg-bg": mix(brand, onBrand === WHITE ? WHITE : "#000000", 0.12),
       "--seg-ink": onBrand,
       "--header-line": onBrand === WHITE ? "rgba(255, 255, 255, 0.28)" : "rgba(0, 0, 0, 0.2)",
@@ -202,6 +218,7 @@ export function brandWarnings(b: BrandLike): string[] {
   const look = lookOf(b);
   if (look.header !== "light" && contrast(b.colorPrimary, readableOn(b.colorPrimary)) < 4.5) out.push("The header text may be hard to read on the main color.");
   if (contrast(b.colorPrimary, WHITE) < 3) out.push("The main color is light, so links and dates will be hard to read on white.");
+  if (b.colorHighlight && !isHex(b.colorHighlight)) out.push("The highlight color looks like #1F5F4A.");
   if (contrast(b.colorAccent, buttonInk(b)) < 4.5) out.push(look.buttonText === "auto" ? "Button text may be hard to read. Pick a darker or lighter button color." : "Button text is hard to read. Set Button text to Automatic.");
   return out;
 }

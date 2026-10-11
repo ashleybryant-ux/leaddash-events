@@ -46,7 +46,7 @@ export const coreRouter = router({
     publicBySlug: publicProcedure.input(z.object({ slug: z.string().max(120) })).query(({ input }) => {
       const org = getDb().select().from(schema.organizations).where(eq(schema.organizations.slug, input.slug)).get();
       if (!org) throw new TRPCError({ code: "NOT_FOUND", message: "That organization was not found." });
-      return { id: org.id, name: org.name, slug: org.slug, colorPrimary: org.colorPrimary, colorAccent: org.colorAccent, logoUrl: fileUrl(org.logoFileId) };
+      return { id: org.id, name: org.name, slug: org.slug, colorPrimary: org.colorPrimary, colorAccent: org.colorAccent, colorHighlight: org.colorHighlight, logoUrl: fileUrl(org.logoFileId) };
     }),
 
     get: protectedProcedure.input(z.object({ orgId: z.number() })).query(({ ctx, input }) => {
@@ -71,13 +71,13 @@ export const coreRouter = router({
       }),
 
     update: protectedProcedure
-      .input(z.object({ orgId: z.number(), name: z.string().min(2).max(120), colorPrimary: hex, colorAccent: hex, logoFileId: z.number().nullable(), allEvents: z.boolean().default(false) }))
+      .input(z.object({ orgId: z.number(), name: z.string().min(2).max(120), colorPrimary: hex, colorAccent: hex, colorHighlight: hex.or(z.literal("")).default(""), logoFileId: z.number().nullable(), allEvents: z.boolean().default(false) }))
       .mutation(({ ctx, input }) => {
         requireOrgAdmin(ctx.user, input.orgId);
         const db = getDb();
         const before = db.select().from(schema.organizations).where(eq(schema.organizations.id, input.orgId)).get();
         db.update(schema.organizations)
-          .set({ name: input.name, colorPrimary: input.colorPrimary, colorAccent: input.colorAccent, logoFileId: input.logoFileId })
+          .set({ name: input.name, colorPrimary: input.colorPrimary, colorAccent: input.colorAccent, colorHighlight: input.colorHighlight, logoFileId: input.logoFileId })
           .where(eq(schema.organizations.id, input.orgId))
           .run();
         // Events that still use the organization's colors or logo follow the change.
@@ -87,10 +87,10 @@ export const coreRouter = router({
           const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
           for (const ev of db.select().from(schema.events).where(eq(schema.events.orgId, input.orgId)).all()) {
             const br = ev.branding;
-            const colorsFollow = input.allEvents || (same(br.colorPrimary, before.colorPrimary) && same(br.colorAccent, before.colorAccent));
+            const colorsFollow = input.allEvents || (same(br.colorPrimary, before.colorPrimary) && same(br.colorAccent, before.colorAccent) && same(br.colorHighlight ?? "", before.colorHighlight ?? ""));
             const logoFollows = input.allEvents || (br.logoFileId ?? null) === (before.logoFileId ?? null);
             if (!colorsFollow && !logoFollows) continue;
-            const next = { ...br, ...(colorsFollow ? { colorPrimary: input.colorPrimary, colorAccent: input.colorAccent } : {}), ...(logoFollows ? { logoFileId: input.logoFileId } : {}) };
+            const next = { ...br, ...(colorsFollow ? { colorPrimary: input.colorPrimary, colorAccent: input.colorAccent, colorHighlight: input.colorHighlight } : {}), ...(logoFollows ? { logoFileId: input.logoFileId } : {}) };
             db.update(schema.events).set({ branding: next }).where(eq(schema.events.id, ev.id)).run();
             eventsUpdated += 1;
           }
@@ -187,7 +187,7 @@ export const coreRouter = router({
         if (db.select().from(schema.events).where(eq(schema.events.slug, slug)).get()) slug = `${slug}-${Date.now().toString(36)}`;
         const ev = db
           .insert(schema.events)
-          .values({ ...input, slug, branding: { colorPrimary: org.colorPrimary, colorAccent: org.colorAccent, logoFileId: org.logoFileId } })
+          .values({ ...input, slug, branding: { colorPrimary: org.colorPrimary, colorAccent: org.colorAccent, colorHighlight: org.colorHighlight, logoFileId: org.logoFileId } })
           .returning()
           .get();
         await seedEvent(ev.id);

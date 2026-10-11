@@ -220,8 +220,12 @@ describe("program", () => {
     await admin.program.branding.update({ ...rest, colorPrimary: "#5B2A6E", colorAccent: "#E2B33C", look });
     expect((await admin.program.branding.get({ eventId: event.id })).look).toEqual(look);
 
+    // The highlight color saves, and an older screen that does not send it leaves it alone.
+    await admin.program.branding.update({ ...rest, colorPrimary: "#5B2A6E", colorAccent: "#E2B33C", colorHighlight: "#2A9D8F", look });
+    expect((await admin.program.branding.get({ eventId: event.id })).colorHighlight).toBe("#2A9D8F");
     // An older screen that does not send the look leaves it alone.
     await admin.program.branding.update({ ...rest, colorPrimary: "#5B2A6E", colorAccent: "#E2B33C" });
+    expect((await admin.program.branding.get({ eventId: event.id })).colorHighlight).toBe("#2A9D8F");
     expect((await admin.program.branding.get({ eventId: event.id })).look).toEqual(look);
     await expect(admin.program.branding.update({ ...rest, colorPrimary: "#5B2A6E", colorAccent: "#E2B33C", look: { ...look, font: "comic" as never } })).rejects.toThrow();
 

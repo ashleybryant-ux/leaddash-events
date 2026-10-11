@@ -1,0 +1,1 @@
+ALTER TABLE `organizations` ADD `color_highlight` text DEFAULT '' NOT NULL;

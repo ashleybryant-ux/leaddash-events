@@ -106,7 +106,7 @@ function publicEventInfo(ev: typeof schema.events.$inferSelect) {
     city: ev.city,
     status: ev.status,
     orgName: org.name,
-    branding: { colorPrimary: ev.branding.colorPrimary, colorAccent: ev.branding.colorAccent, ...lookOf(ev.branding) },
+    branding: { colorPrimary: ev.branding.colorPrimary, colorAccent: ev.branding.colorAccent, colorHighlight: ev.branding.colorHighlight ?? "", ...lookOf(ev.branding) },
     logoUrl: fileUrl(ev.branding.logoFileId ?? org.logoFileId),
   };
 }

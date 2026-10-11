@@ -267,13 +267,13 @@ export function OrgSettingsScreen() {
   const update = trpc.core.org.update.useMutation();
   const addAdmin = trpc.core.org.addAdmin.useMutation();
   const removeAdmin = trpc.core.org.removeAdmin.useMutation();
-  const [draft, setDraft] = useState<{ name: string; colorPrimary: string; colorAccent: string; logoFileId: number | null; logoUrl: string | null; allEvents?: boolean } | null>(null);
+  const [draft, setDraft] = useState<{ name: string; colorPrimary: string; colorAccent: string; colorHighlight: string; logoFileId: number | null; logoUrl: string | null; allEvents?: boolean } | null>(null);
   const [invite, setInvite] = useState({ email: "", name: "" });
   if (!orgId) return <AdminPage title="Organization settings"><Empty>Pick an organization on the Events screen first.</Empty></AdminPage>;
   if (org.isLoading) return <AdminPage title="Organization settings"><PageLoading /></AdminPage>;
   if (org.error) return <AdminPage title="Organization settings"><ErrorNote error={org.error} /></AdminPage>;
   const o = org.data!;
-  const d = draft ?? { name: o.name, colorPrimary: o.colorPrimary, colorAccent: o.colorAccent, logoFileId: o.logoFileId, logoUrl: o.logoUrl, allEvents: false };
+  const d = draft ?? { name: o.name, colorPrimary: o.colorPrimary, colorAccent: o.colorAccent, colorHighlight: o.colorHighlight, logoFileId: o.logoFileId, logoUrl: o.logoUrl, allEvents: false };
   return (
     <AdminPage title="Organization settings" sub={o.name}>
       <div className="card card-pad">
@@ -282,7 +282,7 @@ export function OrgSettingsScreen() {
           saving={update.isPending}
           onCancel={() => setDraft(null)}
           onSave={async () => {
-            const res = await update.mutateAsync({ orgId, name: d.name, colorPrimary: d.colorPrimary, colorAccent: d.colorAccent, logoFileId: d.logoFileId, allEvents: !!d.allEvents });
+            const res = await update.mutateAsync({ orgId, name: d.name, colorPrimary: d.colorPrimary, colorAccent: d.colorAccent, colorHighlight: d.colorHighlight, logoFileId: d.logoFileId, allEvents: !!d.allEvents });
             await Promise.all([utils.core.org.get.invalidate(), utils.core.org.all.invalidate(), utils.auth.me.invalidate(), utils.core.events.invalidate(), utils.program.branding.invalidate()]);
             setDraft(null);
             toast(res.eventsUpdated ? `Saved. ${res.eventsUpdated === 1 ? "1 event uses" : `${res.eventsUpdated} events use`} the new look.` : "Saved");
@@ -291,9 +291,10 @@ export function OrgSettingsScreen() {
             <div>
               <KV label="Name">{o.name}</KV>
               <KV label="Brand colors">
-                <span className="row gap-8">
-                  <span style={{ width: 18, height: 18, borderRadius: 4, background: o.colorPrimary, display: "inline-block" }} /> {o.colorPrimary}
-                  <span style={{ width: 18, height: 18, borderRadius: 4, background: o.colorAccent, display: "inline-block", marginLeft: 12 }} /> {o.colorAccent}
+                <span className="row gap-16" style={{ flexWrap: "wrap" }}>
+                  <Swatch label="Main" color={o.colorPrimary} />
+                  <Swatch label="Buttons" color={o.colorAccent} />
+                  <Swatch label="Highlight" color={o.colorHighlight} empty="Same as main" />
                 </span>
               </KV>
               <KV label="Logo">{o.logoUrl ? <img src={o.logoUrl} alt="Logo" style={{ height: 36 }} /> : null}</KV>
@@ -301,7 +302,7 @@ export function OrgSettingsScreen() {
           }
           edit={
             <div className="grid-3">
-              <Field label="Name">
+              <Field label="Name" className="span-3">
                 <input className="input" value={d.name} onChange={(e) => setDraft({ ...d, name: e.target.value })} />
               </Field>
               <Field label="Main color">
@@ -310,6 +311,17 @@ export function OrgSettingsScreen() {
               <Field label="Button color">
                 <input className="input" type="color" value={d.colorAccent} onChange={(e) => setDraft({ ...d, colorAccent: e.target.value })} />
               </Field>
+              <Field label="Highlight color">
+                <div className="row gap-8">
+                  <input className="input" type="color" value={d.colorHighlight || d.colorPrimary} onChange={(e) => setDraft({ ...d, colorHighlight: e.target.value })} style={{ flex: 1 }} />
+                  {d.colorHighlight ? (
+                    <button type="button" className="btn btn-sm" onClick={() => setDraft({ ...d, colorHighlight: "" })}>
+                      Same as main
+                    </button>
+                  ) : null}
+                </div>
+              </Field>
+              <span className="small muted span-3">Main color: headers. Button color: buttons. Highlight color: tags, links and the selected tab.</span>
               <div className="field span-3">
                 Logo
                 <div className="row gap-8">
@@ -557,5 +569,16 @@ export function EventSettingsScreen() {
         />
       </div>
     </AdminPage>
+  );
+}
+
+/** One brand color: a small square, its label and its hex (or a note when it is not set). */
+function Swatch({ label, color, empty }: { label: string; color: string; empty?: string }) {
+  return (
+    <span className="row gap-6">
+      <span style={{ width: 18, height: 18, borderRadius: 4, background: color || "transparent", border: color ? "none" : "1px dashed var(--line)", display: "inline-block" }} />
+      <span className="muted small">{label}</span>
+      <span>{color || <span className="muted">{empty}</span>}</span>
+    </span>
   );
 }

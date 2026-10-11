@@ -173,6 +173,14 @@ h1, h2, h3 { margin: 0; }
 .bottom-nav { position: sticky; bottom: 0; height: calc(76px + env(safe-area-inset-bottom)); background: #FFFFFF; border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); padding-bottom: calc(8px + env(safe-area-inset-bottom)); z-index: 5; }
 .bottom-nav a { position: relative; text-decoration: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--muted); font-size: 12px; font-weight: 600; }
 .bottom-nav a[aria-current="page"] { color: var(--brand); font-weight: 700; }
+/* Highlight color (the event's third brand color) for small accents on attendee-facing pages. Falls back to the main color. */
+.app .pill:not(.pill-orange):not(.pill-gray):not(.pill-red):not(.pill-solid) { color: var(--highlight-text, var(--brand)); background: var(--highlight-tint, var(--brand-tint)); }
+.app .rich a { color: var(--highlight-text, var(--brand)); }
+.app .bottom-nav a[aria-current="page"] { color: var(--highlight-text, var(--brand)); }
+.app .tile-icon { color: var(--highlight-text, var(--brand)); background: var(--highlight-tint, var(--brand-tint)); }
+.app .chip[aria-selected="true"] { background: var(--highlight, var(--brand)); border-color: var(--highlight, var(--brand)); color: var(--highlight-ink, var(--on-brand)); }
+.app .steps .on .bar { background: var(--highlight, var(--brand)); }
+.app .steps .on span { color: var(--highlight-text, var(--brand)); }
 .badge-count { position: absolute; top: 8px; right: calc(50% - 26px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: var(--accent-ink); font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
 .tile { background: #FFFFFF; border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; display: flex; align-items: center; gap: 12px; text-decoration: none; color: inherit; }
 .tile-icon { width: 40px; height: 40px; border-radius: 12px; background: var(--brand-tint); color: var(--brand); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }

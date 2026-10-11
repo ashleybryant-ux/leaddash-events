@@ -44,6 +44,18 @@ describe("sign-in and access", () => {
     expect(after(event.id)).toMatchObject({ colorPrimary: "#7B219F", colorAccent: "#7A7A7A" });
     expect(after(other.id)).toMatchObject({ colorPrimary: "#123456", colorAccent: "#654321" });
   });
+  it("saves a third brand color and passes it to events that follow the organization", async () => {
+    const { org, event, admin } = await setupEvent();
+    const res = await admin.core.org.update({ orgId: org.id, name: org.name, colorPrimary: "#7B219F", colorAccent: "#7A7A7A", colorHighlight: "#D4A017", logoFileId: null });
+    expect(res.eventsUpdated).toBe(1);
+    expect((await admin.core.org.get({ orgId: org.id })).colorHighlight).toBe("#D4A017");
+    const after = getDb().select().from(schema.events).where(eq(schema.events.id, event.id)).get()!.branding;
+    expect(after).toMatchObject({ colorPrimary: "#7B219F", colorAccent: "#7A7A7A", colorHighlight: "#D4A017" });
+    // Clearing it means the main color again, and a bad value is refused.
+    await admin.core.org.update({ orgId: org.id, name: org.name, colorPrimary: "#7B219F", colorAccent: "#7A7A7A", colorHighlight: "", logoFileId: null });
+    expect((await admin.core.org.get({ orgId: org.id })).colorHighlight).toBe("");
+    await expect(admin.core.org.update({ orgId: org.id, name: org.name, colorPrimary: "#7B219F", colorAccent: "#7A7A7A", colorHighlight: "gold", logoFileId: null })).rejects.toThrow();
+  });
   it("shows the event home checklist and counts, and keeps attendees out", async () => {
     const { org, event, admin } = await setupEvent();
     const home = await admin.core.events.home({ eventId: event.id });
