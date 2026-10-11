@@ -17,7 +17,7 @@ A conference app sold as LeadDash Events (first customer: NABC). Each event bran
 - `client/src/shells/`: `AttendeeShell` (event app frame, `useEventApp()`), `AdminShell` (`useAdmin()`, `<AdminPage>`, the sidebar with Find a page and the event switcher, breadcrumbs, and `eventGroups()`: every event page and its group).
 - `client/src/ui/`: `theme.css` (design system), `components.tsx` (EditSection, ExpandRow, Sheet, Avatar, QR, UploadButton...), `icons.tsx`, `toast.tsx`.
 - `client/src/areas/<area>/routes.tsx`: the area's screens (path, shell, render).
-- `shared/format.ts` (dates with the year, money, names), `shared/time.ts` (event local times to real moments), `shared/address.ts` (venue address lines, Google Maps links and the map preview URL, US states).
+- `shared/format.ts` (dates with the year, money, names), `shared/time.ts` (event local times to real moments), `shared/address.ts` (venue address lines, Google Maps links and the map preview URL, US states), `shared/pricing.ts` (ticket price by date: early bird, regular, late, per buyer type).
 - `deploy.sh`: the owner runs it on the server. Never deploy anything yourself.
 
 ## Rules
