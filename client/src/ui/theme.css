@@ -374,8 +374,11 @@ h1, h2, h3 { margin: 0; }
 .home-venue2 .info span { font-size: 13.5px; color: var(--ink-2); line-height: 1.45; }
 .home-venue2 .acts { display: grid; gap: 8px; padding: 10px 14px 14px; }
 .home-venue2 .acts .btn { height: 40px; gap: 6px; font-size: 13px; }
+.home-list a, .home-list button { width: 100%; background: none; border-left: none; border-right: none; border-top: none; font-family: inherit; cursor: pointer; text-align: left; }
 .home-list a { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: 14.5px; font-weight: 700; color: var(--ink); text-decoration: none; }
-.home-list a:last-child { border-bottom: none; }
+.home-list > :last-child { border-bottom: none; }
+.home-list button { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: 14.5px; font-weight: 700; color: var(--ink); }
+.home-list button > svg { color: var(--brand); flex-shrink: 0; }
 .home-list a > svg:first-child { color: var(--brand); flex-shrink: 0; }
 .home-list a > svg:last-child { color: #9AA9A4; flex-shrink: 0; }
 .home-list em { font-style: normal; background: #E5484D; color: #FFFFFF; font-size: 11px; font-weight: 800; border-radius: 999px; padding: 1px 7px; }

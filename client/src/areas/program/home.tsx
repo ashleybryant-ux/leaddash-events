@@ -7,10 +7,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "wouter";
 import { trpc } from "../../lib/trpc";
-import { AppScreen, useEventApp } from "../../shells/AttendeeShell";
+import { AppScreen, useAppSignOut, useEventApp } from "../../shells/AttendeeShell";
 import { Sheet } from "../../ui/components";
 import { MapPreview } from "../../ui/MapPreview";
-import { IconAward, IconBadge, IconBell, IconBookmark, IconChevron, IconFood, IconHelp, IconImage, IconInfo, IconMap, IconMic, IconPin, IconQr, IconSearch, IconStore, IconUser, IconCalendar, IconStar } from "../../ui/icons";
+import { IconAward, IconBadge, IconBell, IconBookmark, IconChevron, IconFood, IconHelp, IconImage, IconInfo, IconMap, IconMic, IconPin, IconQr, IconSearch, IconStore, IconUser, IconCalendar, IconStar, IconSignOut, IconGear } from "../../ui/icons";
 import { fmtDate, fmtDates, fmtTime, initials } from "@shared/format";
 import { addressLines, directionsLink, hasPlace } from "@shared/address";
 import { dateToZoned, dayOfEvent } from "@shared/time";
@@ -85,7 +85,7 @@ function PassCard() {
   const mine = trpc.core.events.mine.useQuery();
   const [open, setOpen] = useState(false);
   const a = me.attendee;
-  if (!a) return null;
+  if (!a) return <StaffCard />;
   const events = (mine.data ?? []).filter((e) => e.isAttendee);
   const line = [KIND_LABELS[a.kind] ?? "Attendee", a.organization].filter(Boolean).join(" · ");
   return (
@@ -123,6 +123,35 @@ function PassCard() {
           ))}
         </div>
       </Sheet>
+    </>
+  );
+}
+
+/** Event staff who are not registered see who they are signed in as, a way to the admin, and Sign out. */
+function StaffCard() {
+  const { event, me } = useEventApp();
+  const auth = trpc.auth.me.useQuery();
+  const out = useAppSignOut();
+  const email = auth.data?.email ?? "";
+  const name = auth.data?.name || email;
+  const parts = name.split(/[\s@.]+/).filter(Boolean);
+  const canAdmin = me.staff.admin || Object.values(me.staff.areas).some((v) => v !== "none");
+  return (
+    <>
+      <div className="home-lab">Signed in</div>
+      <div className="home-pass">
+        <div className="who" style={{ cursor: "default" }}>
+          <span className="face">{initials(parts[0] ?? "", parts[1] ?? "")}</span>
+          <span className="col" style={{ minWidth: 0, gap: 2 }}>
+            <b className="clip">{name}</b>
+            <small className="clip">Event staff{auth.data?.name ? ` · ${email}` : ""}</small>
+          </span>
+        </div>
+        <div className="acts" style={{ gridTemplateColumns: canAdmin ? "1fr 1fr" : "1fr" }}>
+          {canAdmin ? <a href={`/admin/e/${event.id}`}><IconGear size={16} />Event admin</a> : null}
+          <button type="button" disabled={out.pending} onClick={out.signOut}><IconSignOut size={16} />Sign out</button>
+        </div>
+      </div>
     </>
   );
 }
@@ -188,6 +217,16 @@ function SponsorBanner() {
       </button>
       <VendorLightbox vendorId={openId} onClose={() => setOpenId(null)} />
     </>
+  );
+}
+
+function SignOutRow() {
+  const out = useAppSignOut();
+  return (
+    <button type="button" disabled={out.pending} onClick={out.signOut}>
+      <IconSignOut size={20} />
+      <span className="grow">Sign out</span>
+    </button>
   );
 }
 
@@ -270,6 +309,7 @@ export function HomeScreen() {
                 <Link key={m.label} href={m.href}>{inner}</Link>
               );
             })}
+          {me.attendee ? <SignOutRow /> : null}
         </div>
       </div>
       <div style={{ flex: 1 }} />

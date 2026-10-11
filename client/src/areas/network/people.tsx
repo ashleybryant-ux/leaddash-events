@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { trpc } from "../../lib/trpc";
-import { AppScreen, BackBar, BrandHeader, useEventApp } from "../../shells/AttendeeShell";
+import { AppScreen, BackBar, BrandHeader, useEventApp, useAppSignOut } from "../../shells/AttendeeShell";
 import { EditSection, Empty, ErrorNote, Field, KV, PageLoading, Sheet, UploadButton } from "../../ui/components";
 import { IconSearch } from "../../ui/icons";
 import { errorText, toast } from "../../ui/toast";
@@ -407,7 +407,17 @@ export function EditProfileScreen() {
           ) : null}
         </>
       ) : null}
+      <ProfileSignOut />
     </AppScreen>
+  );
+}
+
+function ProfileSignOut() {
+  const out = useAppSignOut();
+  return (
+    <button type="button" className="btn btn-block" style={{ height: 46, marginTop: 8 }} disabled={out.pending} onClick={out.signOut}>
+      Sign out
+    </button>
   );
 }
 

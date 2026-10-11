@@ -222,3 +222,19 @@ export function BottomNav({ active }: { active: NavKey }) {
     </nav>
   );
 }
+
+/** Signs out of the app and returns to the event's sign-in page. */
+export function useAppSignOut() {
+  const { slug } = useEventApp();
+  const utils = trpc.useUtils();
+  const [, navigate] = useLocation();
+  const m = trpc.auth.signOut.useMutation();
+  return {
+    pending: m.isPending,
+    signOut: async () => {
+      await m.mutateAsync();
+      await utils.invalidate();
+      navigate(`/e/${slug}`);
+    },
+  };
+}
