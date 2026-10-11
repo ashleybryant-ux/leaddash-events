@@ -188,6 +188,16 @@ h1, h2, h3 { margin: 0; }
 .avatar img { width: 100%; height: 100%; object-fit: cover; }
 .avatar-initials { align-items: center; color: var(--brand); font-weight: 800; }
 
+/* Lightbox (speaker bio): centered card with a large headshot at the top */
+.lightbox-backdrop { position: fixed; inset: 0; background: rgba(10, 20, 18, 0.72); display: flex; align-items: center; justify-content: center; padding: 20px 16px; z-index: 60; animation: lb-fade 0.15s ease-out; }
+.lightbox { position: relative; background: #FFFFFF; border-radius: 18px; width: 100%; max-width: 440px; max-height: calc(100dvh - 40px); overflow-y: auto; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35); font-family: var(--app-font, var(--font)); animation: lb-pop 0.18s ease-out; }
+.lightbox-close { position: absolute; top: 12px; right: 12px; width: 38px; height: 38px; border-radius: 50%; border: none; background: rgba(255, 255, 255, 0.92); color: var(--ink); display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 2; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2); }
+.lightbox-photo { width: 100%; aspect-ratio: 1 / 1; max-height: 52dvh; object-fit: cover; object-position: center 25%; display: block; background: var(--highlight-tint, var(--brand-tint)); }
+.lightbox-initials { width: 100%; aspect-ratio: 16 / 10; display: flex; align-items: center; justify-content: center; font-size: 64px; font-weight: 800; color: var(--highlight-text, var(--brand)); background: var(--highlight-tint, var(--brand-tint)); }
+.lightbox-body { padding: 18px 20px 22px; display: flex; flex-direction: column; gap: 14px; }
+@keyframes lb-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes lb-pop { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .lightbox, .lightbox-backdrop { animation: none; } }
 /* Bottom sheet (speaker bio and similar pop-outs) */
 .sheet-backdrop { position: fixed; inset: 0; background: rgba(15, 42, 35, 0.45); display: flex; flex-direction: column; justify-content: flex-end; z-index: 50; }
 .sheet-backdrop > .sheet-close-area { flex: 1; border: none; background: transparent; cursor: pointer; }
