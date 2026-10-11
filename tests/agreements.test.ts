@@ -19,11 +19,14 @@ import { BLANK, fillAgreement, paymentTerms, valuesForCheckout } from "../server
 import { agreementForSpeaker, createAgreement, runAgreementReminders, signAgreement, templateFor } from "../server/areas/agreements/sign";
 import { agreementPdf, htmlBlocks, winAnsi } from "../server/areas/agreements/pdf";
 import { buildRawEmail } from "../server/_core/email";
+import { vendorPageFor } from "../server/areas/registration/vendorCheckout";
 
 const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 
+/** An event without its starting agreements, so each test builds the templates it needs. */
 async function setup() {
   const s = await setupEvent({ orgName: "Sample Organization" });
+  getDb().delete(schema.agreementTemplates).where(eq(schema.agreementTemplates.eventId, s.event.id)).run();
   return s;
 }
 
@@ -131,6 +134,26 @@ describe("filling agreements", () => {
 describe("agreement templates", () => {
   beforeEach(async () => {
     await freshDb();
+  });
+
+  it("gives every event a sponsor, exhibitor and speaker agreement to edit, with nothing sent automatically", async () => {
+    const s = await setupEvent({ orgName: "Sample Organization" });
+    const list = await s.admin.agreements.templates.list({ eventId: s.event.id });
+    expect(list.templates.map((t) => [t.kind, t.name])).toEqual([
+      ["sponsor", "Sponsor agreement 2027"],
+      ["exhibitor", "Exhibitor agreement 2027"],
+      ["speaker", "Speaker agreement 2027"],
+    ]);
+    const speaker = list.templates.find((t) => t.kind === "speaker")!;
+    expect(speaker).toMatchObject({ sendOnAccept: false, sendOnAdd: false, usedOn: "Sent by hand" });
+    expect(list.templates.every((t) => !t.onCheckout && t.total === 0)).toBe(true);
+    // A new sponsor or exhibitor checkout page starts with its agreement picked (and closed).
+    const page = vendorPageFor(s.event.id, "sponsor");
+    expect(page.agreementTemplateId).toBe(list.templates.find((t) => t.kind === "sponsor")!.id);
+    expect(page.open).toBe(false);
+    // An event that had none (made before this) gets them the first time the list opens.
+    getDb().delete(schema.agreementTemplates).where(eq(schema.agreementTemplates.eventId, s.event.id)).run();
+    expect((await s.admin.agreements.templates.list({ eventId: s.event.id })).templates).toHaveLength(3);
   });
 
   it("creates from a starter, saves, previews with sample data and lists signed counts", async () => {

@@ -21,6 +21,9 @@ import type { User } from "../../../drizzle/schema";
 import { sendSpeakerWelcome } from "../registration/recipientMessages";
 import type { AreaModule } from "../types";
 import { DATE_VALUES, FIELDS, ORG_VALUES, SAMPLE, STARTERS, usedOn, type AgreementKind } from "./templates";
+import { ensureAgreementTemplates } from "./defaults";
+
+export { ensureAgreementTemplates };
 import { eventValues, fillAgreement, templateValues } from "./fill";
 import {
   agreementForSpeaker,
@@ -92,6 +95,7 @@ const templatesRouter = router({
   list: protectedProcedure.input(z.object({ eventId: id })).query(({ ctx, input }) => {
     const kinds = kindsFor(ctx.user, input.eventId);
     if (!kinds.length) throw forbidden();
+    ensureAgreementTemplates(input.eventId);
     const db = getDb();
     const rows = db.select().from(schema.agreementTemplates).where(eq(schema.agreementTemplates.eventId, input.eventId)).all().filter((t) => kinds.includes(t.kind));
     const ids = rows.map((t) => t.id);
@@ -486,6 +490,7 @@ function registerHttp(app: Express) {
 
 export const agreementsArea: AreaModule<typeof agreementsRouter> = {
   router: agreementsRouter,
+  seedEvent: (eventId) => ensureAgreementTemplates(eventId),
   jobs: [{ name: "agreement reminders", run: () => runAgreementReminders().then(() => undefined) }],
   registerHttp,
 };

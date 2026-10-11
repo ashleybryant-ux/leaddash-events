@@ -3,7 +3,7 @@
  * Folder tabs for sponsors, exhibitors, packages, add-ons and agreements, plus
  * the venue map. Rows open in place with details, payments, passes and benefits.
  */
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { trpc, type RouterOutputs } from "../../lib/trpc";
 import { AdminPage, useAdmin, useAdminEvent } from "../../shells/AdminShell";
@@ -12,7 +12,6 @@ import { errorText, toast } from "../../ui/toast";
 import { fmtMoney, fmtWhen } from "@shared/format";
 import { toCents } from "./shared";
 import { downloadCsv } from "../ce/util";
-import { AgreementsTab } from "../agreements/AgreementsTab";
 import { VendorAgreementLine } from "../agreements/VendorAgreementBits";
 import { AddAttendeeSheet, type AddPreset } from "./AddAttendeeSheet";
 import { AddonsTab, PackagesTab, includesSentence } from "./admin-packages";
@@ -887,6 +886,10 @@ export function AdminVendorsScreen({ vendorId }: { vendorId?: number }) {
   const opened = vendorId ? data?.vendors.find((v) => v.id === vendorId) : undefined;
   const tab: Tab = wanted && TABS.includes(wanted) ? wanted : opened && !isSponsor(opened) ? "exhibitors" : "sponsors";
   const canEdit = can("vendors", "edit");
+  // Agreements moved to their own page under Setup; old links still land there.
+  useEffect(() => {
+    if (wanted === "agreements") navigate(`/admin/e/${ev.id}/agreements`, { replace: true });
+  }, [wanted, ev.id, navigate]);
   const setTab = (t: Tab) => {
     setAdding(null);
     navigate(`/admin/e/${ev.id}/vendors?tab=${t}`);
@@ -913,7 +916,7 @@ export function AdminVendorsScreen({ vendorId }: { vendorId?: number }) {
     downloadCsv({ filename: `${ev.slug}-packages.csv`, csv });
   };
 
-  const addLabel: Partial<Record<Tab, string>> = { sponsors: "Add sponsor", exhibitors: "Add exhibitor", packages: "Add package", addons: "Add add-on", agreements: "New agreement" };
+  const addLabel: Partial<Record<Tab, string>> = { sponsors: "Add sponsor", exhibitors: "Add exhibitor", packages: "Add package", addons: "Add add-on" };
   const actions = (
     <>
       {tab === "sponsors" || tab === "exhibitors" ? (
@@ -939,7 +942,6 @@ export function AdminVendorsScreen({ vendorId }: { vendorId?: number }) {
     { key: "exhibitors" as Tab, label: `Exhibitors (${count(isExhibitor)})` },
     { key: "packages" as Tab, label: `Packages (${pk.data?.packages.length ?? data?.packages.length ?? 0})` },
     { key: "addons" as Tab, label: `Add-ons (${pk.data?.addons.length ?? data?.counts.addons ?? 0})` },
-    { key: "agreements" as Tab, label: data?.counts.agreements ? `Agreements (${data.counts.agreements})` : "Agreements" },
     { key: "map" as Tab, label: "Venue map" },
   ];
 
@@ -995,11 +997,7 @@ export function AdminVendorsScreen({ vendorId }: { vendorId?: number }) {
           {strip()}
           <div className="col" style={{ gap: 0 }}>
             <FolderTabs tabs={tabs} value={tab} onChange={setTab} />
-            {tab === "agreements" ? (
-              <div className="table">
-                <AgreementsTab adding={adding === "agreements"} onAdded={() => setAdding(null)} />
-              </div>
-            ) : tab === "map" ? (
+            {tab === "map" ? (
               <div className="folder-body">
                 <VenueMapTab />
               </div>

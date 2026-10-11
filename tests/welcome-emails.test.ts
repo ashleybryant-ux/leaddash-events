@@ -164,6 +164,8 @@ describe("speaker welcome", () => {
     const t = speakerAgreementTemplate(s);
     const { sp } = addSpeaker(s, "Renee Carter", "renee@example.com", { title: "Trauma-Informed Care", slidesDueOn: "2027-03-26" });
     addAttendee(s.event.id, "renee@example.com", "Renee", "Carter");
+    // With no agreement sent the welcome would go now; once one is sent, it waits for the signature.
+    createAgreement({ eventId: s.event.id, templateId: t.id, kind: "speaker", speakerId: sp.id, signerEmail: "renee@example.com", values: {}, status: "sent" });
     expect(await sendSpeakerWelcome(sp.id)).toBe("waiting");
     expect(outbox).toHaveLength(0);
     expect((await s.admin.registration.welcomes.get({ eventId: s.event.id, group: "speakers" })).summary.sentLabel).toBe("0 sent · 1 waiting on a signature");
@@ -221,6 +223,7 @@ describe("sponsor and exhibitor welcome", () => {
 
     expect(await sendVendorWelcome(v.id)).toBe("waiting");
     pay(s, v.id, 500000);
+    createAgreement({ eventId: s.event.id, templateId: t.id, kind: "sponsor", vendorId: v.id, signerEmail: "alex@example.com", values: {}, status: "sent" });
     expect(await sendVendorWelcome(v.id)).toBe("waiting");
     expect((await s.admin.registration.welcomes.get({ eventId: s.event.id, group: "sponsors" })).summary.sentLabel).toBe("0 sent · 1 waiting on a signature");
     // Signing is the last thing it waited for, so the welcome goes out on its own.
@@ -282,7 +285,8 @@ describe("sponsor and exhibitor welcome", () => {
     const s = await setupEvent({ orgName: "Sample Organization" });
     const t = speakerAgreementTemplate(s);
     const signed = addSpeaker(s, "Renee Carter", "renee@example.com", { title: "One" }).sp;
-    addSpeaker(s, "Taylor Kim", "taylor@example.com", { title: "Two" });
+    const waiting = addSpeaker(s, "Taylor Kim", "taylor@example.com", { title: "Two" }).sp;
+    createAgreement({ eventId: s.event.id, templateId: t.id, kind: "speaker", speakerId: waiting.id, signerEmail: "taylor@example.com", values: {}, status: "sent" });
     const done = addSpeaker(s, "Lena Ortiz", "lena@example.com", { title: "Three" }).sp;
     addSpeaker(s, "No Email", "", { title: "Four" });
     // Signed without the automatic welcome, and one who already got it.

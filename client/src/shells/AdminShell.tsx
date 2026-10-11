@@ -90,7 +90,7 @@ export function AdminApp({ eventId, children }: { eventId?: number; children: Re
   return <AdminCtx.Provider value={{ me: auth.data, orgId: resolvedOrg, event: ev, setOrgId, can }}>{children}</AdminCtx.Provider>;
 }
 
-type NavItem = { label: string; href: string; area?: Area; adminOnly?: boolean; feature?: keyof AdminEvent["features"]; reviewerOk?: boolean };
+type NavItem = { label: string; href: string; area?: Area; anyArea?: Area[]; adminOnly?: boolean; feature?: keyof AdminEvent["features"]; reviewerOk?: boolean };
 export type NavGroup = { key: string; label: string; icon: ReactNode; items: NavItem[] };
 
 /** The event's pages, grouped by job. Links between areas use the route map in CLAUDE.md. */
@@ -127,6 +127,7 @@ export function eventGroups(eventId: number): NavGroup[] {
     ] },
     { key: "setup", label: "Setup", icon: <IconGear />, items: [
       { label: "Branding", href: `${b}/branding`, adminOnly: true },
+      { label: "Agreements", href: `${b}/agreements`, anyArea: ["vendors", "speakers"] },
       { label: "Reports", href: `${b}/reports`, area: "reports" },
       { label: "Event settings", href: `${b}/settings`, adminOnly: true },
     ] },
@@ -138,6 +139,7 @@ export function visibleGroups(event: AdminEvent): NavGroup[] {
   const ok = (n: NavItem) => {
     if (n.feature && !event.features[n.feature]) return false;
     if (n.adminOnly) return event.access.admin;
+    if (n.anyArea) return n.anyArea.some((a) => event.access.areas[a] !== "none");
     if (n.area) return event.access.areas[n.area] !== "none" || (!!n.reviewerOk && event.access.kinds.includes("reviewer"));
     return true;
   };

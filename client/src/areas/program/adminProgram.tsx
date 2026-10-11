@@ -776,6 +776,9 @@ export function AdminSpeakersScreen() {
       actions={
         canEdit ? (
           <>
+            <Link href={`/admin/e/${event.id}/agreements?open=speaker`} className="btn">
+              Edit agreement
+            </Link>
             <SendAgreementsButton eventId={event.id} />
             <button className="btn btn-primary" onClick={() => setAdding(blankSpeaker)}>
               Add speaker

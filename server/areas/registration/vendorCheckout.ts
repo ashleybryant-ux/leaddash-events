@@ -12,7 +12,7 @@
  */
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { lookOf } from "@shared/brand";
 import { fmtDate, fmtMoney } from "@shared/format";
 import { protectedProcedure, publicProcedure, router } from "../../_core/trpc";
@@ -25,6 +25,7 @@ import { emailButton, emailLayout, escapeHtml, sendEmail, type EmailAttachment }
 import type { VendorBuyer, VendorCheckout, VendorCheckoutPage, VendorPackage } from "../../../drizzle/schema";
 import { createAgreement, signAgreement, signedPdfAttachment, templateById } from "../agreements/sign";
 import { fillAgreement, valuesForCheckout } from "../agreements/fill";
+import { ensureAgreementTemplates } from "../agreements/defaults";
 import { addDays, benefitsFor, eventPackages, passHolders, passTotal, syncBoothStaff, vendorIn, vendorMoney } from "../network/vendors";
 import { syncPaid } from "../network/packages";
 import { accountRow } from "./connect";
@@ -79,8 +80,16 @@ export function vendorPageFor(eventId: number, kind: Kind): VendorCheckoutPage {
   const row = find();
   if (row) return row;
   const ev = db.select().from(schema.events).where(eq(schema.events.id, eventId)).get()!;
+  // A new page starts with the event's agreement of that kind picked (the page itself starts closed, so it can be reviewed first).
+  ensureAgreementTemplates(eventId);
+  const agreement = db
+    .select({ id: schema.agreementTemplates.id })
+    .from(schema.agreementTemplates)
+    .where(and(eq(schema.agreementTemplates.eventId, eventId), eq(schema.agreementTemplates.kind, kind)))
+    .orderBy(asc(schema.agreementTemplates.id))
+    .get();
   db.insert(schema.vendorCheckoutPages)
-    .values({ eventId, kind, title: kind === "sponsor" ? `Sponsor ${ev.name}` : `Exhibit at ${ev.name}`, payFull: true, methods: "both", depositPercent: 50, invoiceHoldDays: 14 })
+    .values({ eventId, kind, title: kind === "sponsor" ? `Sponsor ${ev.name}` : `Exhibit at ${ev.name}`, payFull: true, methods: "both", depositPercent: 50, invoiceHoldDays: 14, agreementTemplateId: agreement?.id ?? null })
     .onConflictDoNothing()
     .run();
   return find()!;

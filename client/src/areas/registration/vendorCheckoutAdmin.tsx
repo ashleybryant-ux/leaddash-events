@@ -4,7 +4,7 @@
  * Charge now, Send invoice and Copy pay link buttons on a sponsor's Payments section.
  */
 import { useState, type ReactNode } from "react";
-import { useLocation, useSearch } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { trpc, type RouterOutputs } from "../../lib/trpc";
 import { useAdmin, useAdminEvent } from "../../shells/AdminShell";
 import { CopyButton, ErrorNote, Field, FolderTabs, PageLoading, Pill, confirmAction } from "../../ui/components";
@@ -145,7 +145,12 @@ export function VendorCheckoutSettings({ kind, canEdit }: { kind: Kind; canEdit:
         <span className="k">Payment methods</span>
         <span>{METHOD_LABELS[s.methods]}</span>
         <span className="k">Agreement to sign</span>
-        <span>{template ? `${template.name}, signed before paying` : "None"}</span>
+        <span className="row gap-10" style={{ flexWrap: "wrap" }}>
+          {template ? `${template.name}, signed before paying` : "None"}
+          <Link href={`/admin/e/${ev.id}/agreements?open=${template ? template.id : kind}`} className="btn btn-sm" style={{ padding: "0 12px" }}>
+            {template ? "Edit agreement" : "Agreements"}
+          </Link>
+        </span>
         <span className="k">Email new {plural} to</span>
         <span>{s.notifyEmail || <span className="muted">Organization owners</span>}</span>
       </div>

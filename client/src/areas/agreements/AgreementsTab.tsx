@@ -393,10 +393,18 @@ function StartSheet({ open, data, onClose, onCreated }: { open: boolean; data: D
   );
 }
 
-export function AgreementsTab({ adding = false, onAdded }: { adding?: boolean; onAdded?: () => void }) {
+export function AgreementsTab({ adding = false, onAdded, initialOpen }: { adding?: boolean; onAdded?: () => void; initialOpen?: string | null }) {
   const ev = useAdminEvent();
   const list = trpc.agreements.templates.list.useQuery({ eventId: ev.id });
   const [open, setOpen] = useState<number | null>(null);
+  // Opens the agreement a link asked for (`?open=` a template id, or a kind like "speaker"), once the list arrives.
+  const [opened, setOpened] = useState(false);
+  useEffect(() => {
+    if (opened || !initialOpen || !list.data) return;
+    const t = list.data.templates.find((x) => String(x.id) === initialOpen) ?? list.data.templates.find((x) => x.kind === initialOpen);
+    if (t) setOpen(t.id);
+    setOpened(true);
+  }, [opened, initialOpen, list.data]);
   const [fresh, setFresh] = useState<number | null>(null);
   const cols = "1.5fr 1.3fr 1fr 1fr 96px";
   if (list.isLoading) return <PageLoading />;

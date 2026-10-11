@@ -93,9 +93,10 @@ function speakerReadiness(sp: Speaker, t: Template, mode: "auto" | "bulk"): Read
   if (!sp.email) return { ready: false, waiting: null };
   if (t.sendRule === "manual") return { ready: mode === "bulk", waiting: null };
   if (t.sendRule === "after_accept") return { ready: sessionsOfSpeaker(sp.id).length > 0, waiting: null };
-  // after_sign: needs a signed agreement when the event has a speaker agreement.
-  if (!agreementTemplateFor(sp.eventId, "speaker")) return { ready: true, waiting: null };
-  return agreementForSpeaker(sp.id)?.status === "signed" ? { ready: true, waiting: null } : { ready: false, waiting: "signature" };
+  // after_sign: waits only when a speaker agreement was actually sent to this speaker (every event has the templates).
+  const a = agreementForSpeaker(sp.id);
+  if (!a || (a.status !== "sent" && a.status !== "signed")) return { ready: true, waiting: null };
+  return a.status === "signed" ? { ready: true, waiting: null } : { ready: false, waiting: "signature" };
 }
 
 function vendorReadiness(v: Vendor, t: Template, mode: "auto" | "bulk", payments = paymentsOf(v.id)): Readiness {
@@ -104,8 +105,9 @@ function vendorReadiness(v: Vendor, t: Template, mode: "auto" | "bulk", payments
   if (t.sendRule === "manual") return { ready: mode === "bulk" && (paid || v.status === "confirmed"), waiting: null };
   if (!paid) return { ready: false, waiting: "payment" };
   if (t.sendRule === "after_payment") return { ready: true, waiting: null };
-  const list = agreementsForVendor(v.id).filter((a) => a.status !== "void");
-  const needsSignature = list.length > 0 || !!templateForVendor(v);
+  // Waits only for an agreement that was sent or signed (drafts and unused templates do not hold it back).
+  const list = agreementsForVendor(v.id).filter((a) => a.status === "sent" || a.status === "signed");
+  const needsSignature = list.length > 0;
   if (needsSignature && !signedOf(list)) return { ready: false, waiting: "signature" };
   return { ready: true, waiting: null };
 }
