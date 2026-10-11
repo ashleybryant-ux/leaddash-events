@@ -11,7 +11,7 @@ import { trpc, type RouterOutputs } from "../lib/trpc";
 import { PageLoading, ErrorNote } from "../ui/components";
 import { IconBack, IconCalendar, IconChat, IconHouse, IconMail, IconPeople } from "../ui/icons";
 import { SignIn } from "../core/SignIn";
-import { fmtDates, initials } from "@shared/format";
+import { fmtDates } from "@shared/format";
 import { fontHref, lookOf, themeVars, type BrandLike } from "@shared/brand";
 
 type PublicEvent = RouterOutputs["core"]["events"]["publicBySlug"];
@@ -220,21 +220,5 @@ export function BottomNav({ active }: { active: NavKey }) {
         </Link>
       ))}
     </nav>
-  );
-}
-
-/** Round chip with the person's photo or initials, linking to their profile (Home and Agenda top bars). */
-export function ProfileChip() {
-  const { base, me } = useEventApp();
-  const auth = trpc.auth.me.useQuery();
-  const a = me.attendee;
-  const name = a ? `${a.firstName} ${a.lastName}` : auth.data?.name || auth.data?.email || "";
-  const parts = name.split(/\s+/).filter(Boolean);
-  const text = a ? initials(a.firstName, a.lastName) : initials(parts[0] ?? "", parts.length > 1 ? parts[parts.length - 1] : "");
-  return (
-    <Link href={`${base}/profile`} className="profile-chip" aria-label="My profile">
-      <span className="profile-chip-face">{a?.photoUrl ? <img src={a.photoUrl} alt="" /> : text}</span>
-      <span aria-hidden="true" className="profile-chip-arrow">›</span>
-    </Link>
   );
 }

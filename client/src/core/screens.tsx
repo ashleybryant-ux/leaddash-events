@@ -6,6 +6,8 @@ import { AdminPage, useAdmin, useAdminEvent } from "../shells/AdminShell";
 import { EditSection, Empty, ErrorNote, Field, KV, Modal, PageLoading, Pill, UploadButton, confirmAction, NumStrip } from "../ui/components";
 import { errorText, toast } from "../ui/toast";
 import { fmtDates, fmtMoney } from "@shared/format";
+import { US_STATES, addressLines, hasPlace, mapsLink } from "@shared/address";
+import { MapPreview } from "../ui/MapPreview";
 import { SignIn } from "./SignIn";
 import { IconCheck, IconLeaf } from "../ui/icons";
 
@@ -155,7 +157,7 @@ function NewEventModal({ open, onClose, orgId }: { open: boolean; onClose: () =>
   const [, navigate] = useLocation();
   const utils = trpc.useUtils();
   const create = trpc.core.events.create.useMutation();
-  const [f, setF] = useState({ name: "", shortName: "", startDate: "", endDate: "", venueName: "", venueAddress: "", city: "", timezone: "America/Chicago" });
+  const [f, setF] = useState({ name: "", shortName: "", startDate: "", endDate: "", venueName: "", venueAddress: "", city: "", state: "", zip: "", timezone: "America/Chicago" });
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
   return (
     <Modal open={open} onClose={onClose} title="New event">
@@ -181,15 +183,28 @@ function NewEventModal({ open, onClose, orgId }: { open: boolean; onClose: () =>
         <Field label="Ends">
           <input className="input" type="date" value={f.endDate} onChange={set("endDate")} />
         </Field>
-        <Field label="Venue">
+        <Field label="Venue or hotel name" className="span-2">
           <input className="input" value={f.venueName} onChange={set("venueName")} />
+        </Field>
+        <Field label="Street address" className="span-2">
+          <input className="input" value={f.venueAddress} onChange={set("venueAddress")} />
         </Field>
         <Field label="City">
           <input className="input" value={f.city} onChange={set("city")} />
         </Field>
-        <Field label="Venue address" className="span-2">
-          <input className="input" value={f.venueAddress} onChange={set("venueAddress")} />
-        </Field>
+        <div className="grid-2" style={{ gap: 10 }}>
+          <Field label="State">
+            <select className="select" value={f.state} onChange={set("state")}>
+              <option value="">Pick</option>
+              {US_STATES.map(([code]) => (
+                <option key={code} value={code}>{code}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="ZIP code">
+            <input className="input" inputMode="numeric" maxLength={10} value={f.zip} onChange={set("zip")} />
+          </Field>
+        </div>
       </div>
       <div className="row gap-10">
         <button
@@ -496,33 +511,38 @@ export function EventHomeScreen() {
   );
 }
 
-/** /admin/e/:id/settings: the event's basics. */
+/** /admin/e/:id/settings: the event's basics and its location. */
 export function EventSettingsScreen() {
   const ev = useAdminEvent();
   const utils = trpc.useUtils();
   const update = trpc.core.events.update.useMutation();
-  const blank = { name: ev.name, shortName: ev.shortName, startDate: ev.startDate, endDate: ev.endDate, timezone: ev.timezone, venueName: ev.venueName, venueAddress: ev.venueAddress, city: ev.city, capacity: ev.capacity, status: ev.status };
-  const [d, setD] = useState(blank);
+  const basics = { name: ev.name, shortName: ev.shortName, startDate: ev.startDate, endDate: ev.endDate, timezone: ev.timezone, capacity: ev.capacity, status: ev.status };
+  const place = { venueName: ev.venueName, venueAddress: ev.venueAddress, venueAddress2: ev.venueAddress2, city: ev.city, state: ev.state, zip: ev.zip };
+  const [d, setD] = useState(basics);
+  const [l, setL] = useState(place);
   const set = (k: keyof typeof d) => (e: { target: { value: string } }) => setD({ ...d, [k]: e.target.value });
+  const setP = (k: keyof typeof l) => (e: { target: { value: string } }) => setL({ ...l, [k]: e.target.value });
   const appLink = `${window.location.origin}/e/${ev.slug}`;
+  const lines = addressLines(place);
+  const save = async (next: { basics?: typeof d; place?: typeof l }) => {
+    const b = next.basics ?? basics;
+    await update.mutateAsync({ eventId: ev.id, ...b, ...(next.place ?? place), capacity: b.capacity ? Number(b.capacity) : null });
+    await utils.core.events.get.invalidate();
+  };
   return (
     <AdminPage title="Event settings">
       <div className="card card-pad">
         <EditSection
           title="Event"
           saving={update.isPending}
-          onCancel={() => setD(blank)}
-          onSave={async () => {
-            await update.mutateAsync({ eventId: ev.id, ...d, capacity: d.capacity ? Number(d.capacity) : null });
-            await utils.core.events.get.invalidate();
-          }}
+          onCancel={() => setD(basics)}
+          onSave={() => save({ basics: d })}
           view={
             <div>
               <KV label="Name">{ev.name}</KV>
               <KV label="Short name">{ev.shortName}</KV>
               <KV label="Dates">{fmtDates(ev.startDate, ev.endDate)}</KV>
               <KV label="Time zone">{ev.timezone}</KV>
-              <KV label="Venue">{[ev.venueName, ev.venueAddress, ev.city].filter(Boolean).join(", ")}</KV>
               <KV label="Capacity">{ev.capacity ? String(ev.capacity) : ""}</KV>
               <KV label="Status">{ev.status === "live" ? "Live" : ev.status === "draft" ? "Draft (attendees cannot open the app yet)" : "Ended"}</KV>
               <KV label="Attendee app link">{appLink}</KV>
@@ -545,17 +565,8 @@ export function EventSettingsScreen() {
               <Field label="Time zone">
                 <input className="input" value={d.timezone} onChange={set("timezone")} />
               </Field>
-              <Field label="Venue">
-                <input className="input" value={d.venueName} onChange={set("venueName")} />
-              </Field>
-              <Field label="City">
-                <input className="input" value={d.city} onChange={set("city")} />
-              </Field>
               <Field label="Capacity">
                 <input className="input" inputMode="numeric" value={d.capacity ?? ""} onChange={(e) => setD({ ...d, capacity: e.target.value ? Number(e.target.value.replace(/\D/g, "")) : null })} />
-              </Field>
-              <Field label="Venue address" className="span-2">
-                <input className="input" value={d.venueAddress} onChange={set("venueAddress")} />
               </Field>
               <Field label="Status">
                 <select className="select" value={d.status} onChange={set("status")}>
@@ -564,6 +575,69 @@ export function EventSettingsScreen() {
                   <option value="ended">Ended</option>
                 </select>
               </Field>
+            </div>
+          }
+        />
+      </div>
+      <div className="card card-pad">
+        <EditSection
+          title="Location"
+          saving={update.isPending}
+          onCancel={() => setL(place)}
+          onSave={() => save({ place: l })}
+          view={
+            <div className="location-grid">
+              <div>
+                <KV label="Venue">{ev.venueName}</KV>
+                <KV label="Address">
+                  {lines.length ? lines.map((line, i) => <div key={i}>{line}</div>) : ""}
+                </KV>
+                <KV label="In the app">Home shows the name, address and map. Directions opens Google Maps.</KV>
+              </div>
+              <div className="col gap-8">
+                <MapPreview venue={place} />
+                {hasPlace(place) ? (
+                  <a className="btn btn-sm" style={{ alignSelf: "flex-start" }} href={mapsLink(place)} target="_blank" rel="noopener noreferrer">
+                    Open in Google Maps
+                  </a>
+                ) : null}
+              </div>
+            </div>
+          }
+          edit={
+            <div className="location-grid">
+              <div className="col gap-10">
+                <Field label="Venue or hotel name">
+                  <input className="input" value={l.venueName} onChange={setP("venueName")} />
+                </Field>
+                <Field label="Street address">
+                  <input className="input" value={l.venueAddress} onChange={setP("venueAddress")} autoComplete="address-line1" />
+                </Field>
+                <Field label="Suite, building or floor (optional)">
+                  <input className="input" value={l.venueAddress2} onChange={setP("venueAddress2")} autoComplete="address-line2" />
+                </Field>
+                <div className="location-csz">
+                  <Field label="City">
+                    <input className="input" value={l.city} onChange={setP("city")} autoComplete="address-level2" />
+                  </Field>
+                  <Field label="State">
+                    <select className="select" value={l.state} onChange={setP("state")}>
+                      <option value="">Pick one</option>
+                      {US_STATES.map(([code, name]) => (
+                        <option key={code} value={code}>{name}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="ZIP code">
+                    <input className="input" inputMode="numeric" maxLength={10} value={l.zip} onChange={setP("zip")} autoComplete="postal-code" />
+                  </Field>
+                </div>
+                <div className="fill-note">The map updates as you type. The app Home shows the hotel name, the full address and this map.</div>
+              </div>
+              <div className="col gap-6">
+                <MapPreview venue={l} />
+                <span className="small muted">Preview from Google Maps</span>
+              </div>
             </div>
           }
         />

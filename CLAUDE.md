@@ -10,14 +10,14 @@ A conference app sold as LeadDash Events (first customer: NABC). Each event bran
 - Database changes: edit `drizzle/schema/*.ts`, then `npx drizzle-kit generate --name <what_changed>` and commit the migration.
 
 ## Where things are
-- `drizzle/schema/`: every table. `core.ts` (associations, people, events, files, staff roles, push, platform), `registration.ts` (tickets, attendees, orders, Stripe, messages), `program.ts` (sessions, speakers, agenda, announcements, dining, help), `ce.ts` (evaluations, check-ins, certificates), `network.ts` (messages, meetings, community, vendors, leads, maps, polls, proposals, event photos), `sponsor.ts` (sponsor and exhibitor packages, add-ons, vendor payments, sponsor/exhibitor checkout pages and checkouts, agreement templates and agreements, session slide files, recipient log).
+- `drizzle/schema/`: every table. `core.ts` (associations, people, events, files, staff roles, push, platform), `registration.ts` (tickets, attendees, orders, Stripe, messages), `program.ts` (sessions, speakers, agenda, announcements, dining, help, About host people), `ce.ts` (evaluations, check-ins, certificates), `network.ts` (messages, meetings, community, vendors, leads, maps, polls, proposals, event photos), `sponsor.ts` (sponsor and exhibitor packages, add-ons, vendor payments, sponsor/exhibitor checkout pages and checkouts, agreement templates and agreements, session slide files, recipient log).
 - `server/_core/`: env, db, auth context, access rules (`access.ts`), email (SES), push (`notify()`), files, LeadDash platform outbox (`platform.ts`), scheduler.
 - `server/core/`: sign-in (`auth.ts`) and association/event/file/push routes (`router.ts`).
 - `server/areas/<area>/index.ts`: each feature area's tRPC router, defaults for new events (`seedEvent`), minute jobs, and plain HTTP routes. `agreements` holds agreement templates, signing and the signed PDF (pdf-lib). Vendor checkout and scheduled vendor charges are `registration/vendorCheckout.ts` and `vendorCharges.ts`; speaker and vendor welcome emails are `registration/recipientMessages.ts`; slides are `program/slides.ts`.
 - `client/src/shells/`: `AttendeeShell` (event app frame, `useEventApp()`), `AdminShell` (`useAdmin()`, `<AdminPage>`, the sidebar with Find a page and the event switcher, breadcrumbs, and `eventGroups()`: every event page and its group).
 - `client/src/ui/`: `theme.css` (design system), `components.tsx` (EditSection, ExpandRow, Sheet, Avatar, QR, UploadButton...), `icons.tsx`, `toast.tsx`.
 - `client/src/areas/<area>/routes.tsx`: the area's screens (path, shell, render).
-- `shared/format.ts` (dates with the year, money, names), `shared/time.ts` (event local times to real moments).
+- `shared/format.ts` (dates with the year, money, names), `shared/time.ts` (event local times to real moments), `shared/address.ts` (venue address lines, Google Maps links and the map preview URL, US states).
 - `deploy.sh`: the owner runs it on the server. Never deploy anything yourself.
 
 ## Rules

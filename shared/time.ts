@@ -41,3 +41,11 @@ export function minutesBetween(start: string, end: string) {
   const [c, d] = end.split(":").map(Number);
   return c * 60 + d - (a * 60 + b);
 }
+
+const dayNumber = (iso: string) => Math.round(Date.parse(`${iso}T12:00:00Z`) / 86_400_000);
+
+/** "Day 2 of 3" while the event runs, nothing before or after. Dates are "2027-04-22". */
+export function dayOfEvent(today: string, start: string, end: string) {
+  if (today < start || today > end) return "";
+  return `Day ${dayNumber(today) - dayNumber(start) + 1} of ${dayNumber(end) - dayNumber(start) + 1}`;
+}

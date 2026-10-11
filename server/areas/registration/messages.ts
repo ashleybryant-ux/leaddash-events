@@ -4,6 +4,7 @@
  * which allows one row per attendee and kind, so nothing goes twice.
  */
 import { and, desc, eq, inArray, ne } from "drizzle-orm";
+import { addressLines } from "@shared/address";
 import QRCode from "qrcode";
 import { getDb, schema } from "../../_core/db";
 import { ENV } from "../../_core/env";
@@ -397,7 +398,7 @@ export function calendarFile(ev: Event) {
   const ymd = (s: string) => s.replace(/-/g, "");
   const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n");
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
-  const location = [ev.venueName, ev.venueAddress, ev.city].filter(Boolean).join(", ");
+  const location = [ev.venueName, ...addressLines(ev)].filter(Boolean).join(", ");
   return [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",

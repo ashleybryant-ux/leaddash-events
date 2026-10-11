@@ -222,6 +222,25 @@ export const helpDesks = sqliteTable("help_desks", {
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
 });
 
+/** People on the About your host page (board, team, staff), grouped under a heading. */
+export const hostPeople = sqliteTable(
+  "host_people",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    eventId: integer("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    title: text("title").notNull().default(""),
+    workplace: text("workplace").notNull().default(""),
+    /** The heading they show under: "Our team", "Board of directors" or the organization's own. */
+    groupLabel: text("group_label").notNull().default("Our team"),
+    bio: text("bio").notNull().default(""),
+    photoFileId: integer("photo_file_id").references(() => files.id, { onDelete: "set null" }),
+    sort: integer("sort").notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [index("host_people_event").on(t.eventId)]
+);
+
 /** Which push notices an attendee wants. In-app alerts are always kept. */
 export const alertPrefs = sqliteTable("alert_prefs", {
   id: integer("id").primaryKey({ autoIncrement: true }),

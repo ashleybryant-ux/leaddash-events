@@ -1214,7 +1214,185 @@ export function AdminHostScreen() {
           }
         />
       </div>
+      <TeamMembers eventId={event.id} />
     </AdminPage>
+  );
+}
+
+const HOST_GROUPS = ["Our team", "Board of directors", "Advisory board", "Staff", "Volunteers"];
+type HostPerson = RouterOutputs["program"]["host"]["people"][number];
+
+const faceOf = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("");
+
+function PersonFace({ url, name, size }: { url: string | null; name: string; size: number }) {
+  return (
+    <span style={{ width: size, height: size, borderRadius: "50%", overflow: "hidden", flexShrink: 0, background: "var(--brand-tint)", color: "var(--brand)", fontWeight: 800, fontSize: size / 3, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+      {url ? <img src={url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : faceOf(name)}
+    </span>
+  );
+}
+
+/** Team members on the About your host page: rows open in place to edit. */
+function TeamMembers({ eventId }: { eventId: number }) {
+  const utils = trpc.useUtils();
+  const q = trpc.program.host.people.useQuery({ eventId });
+  const remove = trpc.program.host.removePerson.useMutation();
+  const [open, setOpen] = useState<number | "new" | null>(null);
+  const cols = "minmax(0, 2.2fr) minmax(0, 1.4fr) minmax(0, 1.2fr) 104px 104px";
+  const people = q.data ?? [];
+  const groups = Array.from(new Set([...HOST_GROUPS, ...people.map((p) => p.groupLabel)]));
+  return (
+    <div className="card col" style={{ overflow: "hidden", gap: 0 }}>
+      <div className="row gap-12" style={{ padding: "14px 18px" }}>
+        <span className="h3">Team members ({people.length})</span>
+        <span className="small muted grow">Shows in the app under About host, grouped by heading. Tap a person to read their bio.</span>
+        <button className="btn btn-sm btn-w btn-solid" onClick={() => setOpen("new")}>Add person</button>
+      </div>
+      {open === "new" ? (
+        <div className="editor">
+          <PersonEditor eventId={eventId} groups={groups} onDone={() => setOpen(null)} />
+        </div>
+      ) : null}
+      {q.error ? <ErrorNote error={q.error} /> : null}
+      <div style={{ overflowX: "auto", borderTop: "1px solid var(--line)" }}>
+        <div className="table-inner">
+          <THead cols={cols} labels={["Name", "Title", "Shows under", "", ""]} />
+          {q.isLoading ? <PageLoading /> : !people.length ? <Empty>No team members yet. Add your board, staff or anyone you want attendees to know.</Empty> : null}
+          {people.map((p) => (
+            <ExpandRow
+              key={p.id}
+              cols={cols}
+              open={open === p.id}
+              onToggle={() => setOpen(open === p.id ? null : p.id)}
+              closedLabel="Edit"
+              cells={[
+                <span className="row gap-10">
+                  <PersonFace url={p.photoUrl} name={p.name} size={38} />
+                  <span className="strong clip">{p.name}</span>
+                </span>,
+                <span className="clip">{p.title || <span className="muted">Not set</span>}</span>,
+                <span><Pill>{p.groupLabel}</Pill></span>,
+                <button
+                  type="button"
+                  className="btn btn-sm btn-w"
+                  disabled={remove.isPending}
+                  onClick={async () => {
+                    if (!confirmAction(`Remove ${p.name} from About host?`)) return;
+                    try {
+                      await remove.mutateAsync({ eventId, id: p.id });
+                      if (open === p.id) setOpen(null);
+                      await utils.program.host.people.invalidate({ eventId });
+                      toast("Removed");
+                    } catch (e) {
+                      toast(errorText(e), true);
+                    }
+                  }}
+                >
+                  Remove
+                </button>,
+              ]}
+            >
+              <PersonEditor eventId={eventId} person={p} groups={groups} onDone={() => setOpen(null)} />
+            </ExpandRow>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PersonEditor({ eventId, person, groups, onDone }: { eventId: number; person?: HostPerson; groups: string[]; onDone: () => void }) {
+  const utils = trpc.useUtils();
+  const save = trpc.program.host.savePerson.useMutation();
+  const [f, setF] = useState({
+    name: person?.name ?? "",
+    title: person?.title ?? "",
+    workplace: person?.workplace ?? "",
+    group: person?.groupLabel ?? "Our team",
+    other: "",
+    bio: person?.bio ?? "",
+    photoFileId: person?.photoFileId ?? null,
+    photoUrl: person?.photoUrl ?? null,
+    sort: person?.sort ?? 0,
+  });
+  const t = (k: "name" | "title" | "workplace" | "other" | "bio") => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
+  // Headings typed for other people show as choices too, so a second "Founders" person is one pick away.
+  const choices = groups;
+  return (
+    <div className="col gap-12">
+      <div className="row gap-16" style={{ alignItems: "flex-start" }}>
+        <div className="col gap-6" style={{ alignItems: "center", width: 110 }}>
+          <span className="small strong muted" style={{ alignSelf: "flex-start" }}>Photo</span>
+          <PersonFace url={f.photoUrl} name={f.name || "?"} size={96} />
+          <UploadButton label={f.photoFileId ? "Change" : "Upload"} eventId={eventId} onUploaded={(file) => setF({ ...f, photoFileId: file.id, photoUrl: file.url })} />
+        </div>
+        <div className="grid-2 grow">
+          <Field label="Name">
+            <input className="input" value={f.name} onChange={t("name")} />
+          </Field>
+          <Field label="Title">
+            <input className="input" value={f.title} onChange={t("title")} placeholder="President" />
+          </Field>
+          <Field label="Shows under">
+            <select className="select" value={f.group} onChange={(e) => setF({ ...f, group: e.target.value })}>
+              {choices.map((g) => (
+                <option key={g} value={g}>{g}</option>
+              ))}
+              <option value="__other">Other (type your own)</option>
+            </select>
+          </Field>
+          {f.group === "__other" ? (
+            <Field label="Heading">
+              <input className="input" value={f.other} onChange={t("other")} placeholder="Founders" />
+            </Field>
+          ) : (
+            <Field label="Workplace (optional)">
+              <input className="input" value={f.workplace} onChange={t("workplace")} />
+            </Field>
+          )}
+          {f.group === "__other" ? (
+            <Field label="Workplace (optional)">
+              <input className="input" value={f.workplace} onChange={t("workplace")} />
+            </Field>
+          ) : null}
+          <Field label="Order in the group" hint="1 shows first">
+            <input className="input" inputMode="numeric" value={f.sort ? String(f.sort) : ""} onChange={(e) => setF({ ...f, sort: Number(e.target.value.replace(/\D/g, "").slice(0, 3)) || 0 })} />
+          </Field>
+          <Field label="Bio" className="span-all">
+            <textarea className="textarea" rows={4} value={f.bio} onChange={t("bio")} />
+          </Field>
+        </div>
+      </div>
+      <div className="row gap-8">
+        <button
+          className="btn btn-sm btn-w btn-solid"
+          disabled={save.isPending}
+          onClick={async () => {
+            try {
+              await save.mutateAsync({
+                eventId,
+                id: person?.id ?? null,
+                name: f.name,
+                title: f.title,
+                workplace: f.workplace,
+                groupLabel: f.group === "__other" ? f.other : f.group,
+                bio: f.bio,
+                photoFileId: f.photoFileId,
+                sort: f.sort,
+              });
+              await utils.program.host.people.invalidate({ eventId });
+              toast("Saved");
+              onDone();
+            } catch (e) {
+              toast(errorText(e), true);
+            }
+          }}
+        >
+          Save
+        </button>
+        <button className="btn btn-sm btn-w" onClick={onDone}>Cancel</button>
+      </div>
+    </div>
   );
 }
 

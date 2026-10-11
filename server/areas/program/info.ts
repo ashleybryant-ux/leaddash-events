@@ -142,7 +142,63 @@ export const diningRouter = router({
   }),
 });
 
+/** Headings offered for host people; the organization can also type its own. */
+export const HOST_GROUPS = ["Our team", "Board of directors", "Advisory board", "Staff", "Volunteers"] as const;
+
+const personInput = z.object({
+  name: z.string().trim().min(1, "Add a name.").max(120),
+  title: z.string().trim().max(120).default(""),
+  workplace: z.string().trim().max(160).default(""),
+  groupLabel: z.string().trim().min(1, "Pick where they show.").max(60),
+  bio: z.string().trim().max(4000).default(""),
+  photoFileId: z.number().int().nullable().default(null),
+  sort: z.number().int().min(0).max(1000).default(0),
+});
+
+/** Host people grouped by heading: groups in the order of their first person, people by their order then name. */
+function hostPeople(eventId: number) {
+  const rows = getDb().select().from(schema.hostPeople).where(eq(schema.hostPeople.eventId, eventId)).orderBy(asc(schema.hostPeople.sort), asc(schema.hostPeople.id)).all();
+  const people = rows.map((r) => ({ ...r, photoUrl: fileUrl(r.photoFileId) }));
+  const groups: { label: string; people: typeof people }[] = [];
+  for (const p of people) {
+    let g = groups.find((x) => x.label === p.groupLabel);
+    if (!g) groups.push((g = { label: p.groupLabel, people: [] }));
+    g.people.push(p);
+  }
+  return { people, groups };
+}
+
 export const hostRouter = router({
+  people: protectedProcedure.input(z.object({ eventId: z.number() })).query(({ ctx, input }) => {
+    requireEventAdmin(ctx.user, input.eventId);
+    return hostPeople(input.eventId).people;
+  }),
+
+  savePerson: protectedProcedure.input(personInput.extend({ eventId: z.number(), id: z.number().nullable().default(null) })).mutation(({ ctx, input }) => {
+    const ev = requireEventAdmin(ctx.user, input.eventId);
+    checkImage(ev.orgId, input.photoFileId);
+    const { eventId, id, ...values } = input;
+    const db = getDb();
+    if (id) {
+      const row = db.select().from(schema.hostPeople).where(eq(schema.hostPeople.id, id)).get();
+      if (!row || row.eventId !== eventId) throw notFound("That person");
+      audit(ctx.user, { orgId: ev.orgId, eventId, action: "host.person.update", detail: values.name });
+      return db.update(schema.hostPeople).set(values).where(eq(schema.hostPeople.id, id)).returning().get();
+    }
+    audit(ctx.user, { orgId: ev.orgId, eventId, action: "host.person.add", detail: values.name });
+    return db.insert(schema.hostPeople).values({ ...values, eventId }).returning().get();
+  }),
+
+  removePerson: protectedProcedure.input(z.object({ eventId: z.number(), id: z.number() })).mutation(({ ctx, input }) => {
+    const ev = requireEventAdmin(ctx.user, input.eventId);
+    const db = getDb();
+    const row = db.select().from(schema.hostPeople).where(eq(schema.hostPeople.id, input.id)).get();
+    if (!row || row.eventId !== input.eventId) throw notFound("That person");
+    db.delete(schema.hostPeople).where(eq(schema.hostPeople.id, input.id)).run();
+    audit(ctx.user, { orgId: ev.orgId, eventId: ev.id, action: "host.person.remove", detail: row.name });
+    return { ok: true };
+  }),
+
   adminGet: protectedProcedure.input(z.object({ eventId: z.number() })).query(({ ctx, input }) => hostView(requireEventAdmin(ctx.user, input.eventId))),
 
   update: protectedProcedure
@@ -197,7 +253,8 @@ export const hostRouter = router({
   get: protectedProcedure.input(z.object({ slug: z.string().max(120) })).query(({ ctx, input }) => {
     const { event } = viewer(ctx.user, input.slug);
     const v = hostView(event);
-    return { ...v, imageFileId: undefined };
+    const groups = hostPeople(event.id).groups.map((g) => ({ label: g.label, people: g.people.map(({ photoFileId: _p, eventId: _e, createdAt: _c, sort: _s, ...p }) => p) }));
+    return { ...v, imageFileId: undefined, groups };
   }),
 });
 

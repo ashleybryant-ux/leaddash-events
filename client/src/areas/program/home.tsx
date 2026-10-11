@@ -1,31 +1,22 @@
 /**
- * /e/:slug/home: the app's Home tab. Cover image with the event logo, the
- * event name, city and dates, the venue with a map link, the attendee's next
- * session, a grid of every other page the event has turned on, and a sponsor
- * banner above the bottom bar.
+ * /e/:slug/home: the app's Home tab. A cover with the event name, dates and
+ * host, the attendee's next session, a row of main shortcuts, the attendee's
+ * pass (badge, profile and their other events), the venue with a live map,
+ * a list of every other page the event has turned on, and a sponsor banner.
  */
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "wouter";
 import { trpc } from "../../lib/trpc";
-import { AppScreen, ProfileChip, useEventApp } from "../../shells/AttendeeShell";
-import { IconAward, IconBadge, IconBell, IconBookmark, IconFood, IconHelp, IconImage, IconInfo, IconMap, IconMic, IconPin, IconQr, IconSearch, IconStore, IconUser } from "../../ui/icons";
-import { fmtDate, fmtDates, fmtTime } from "@shared/format";
-import { dateToZoned } from "@shared/time";
+import { AppScreen, useEventApp } from "../../shells/AttendeeShell";
+import { Sheet } from "../../ui/components";
+import { MapPreview } from "../../ui/MapPreview";
+import { IconAward, IconBadge, IconBell, IconBookmark, IconChevron, IconFood, IconHelp, IconImage, IconInfo, IconMap, IconMic, IconPin, IconQr, IconSearch, IconStore, IconUser, IconCalendar } from "../../ui/icons";
+import { fmtDate, fmtDates, fmtTime, initials } from "@shared/format";
+import { addressLines, directionsLink, hasPlace } from "@shared/address";
+import { dateToZoned, dayOfEvent } from "@shared/time";
 import { VendorLightbox } from "../network/booths";
 import { photosSeenAt } from "../network/photos";
 import { ceLabel } from "./shared";
-
-/** "Dallas, TX" from "650 S Griffin St, Dallas, TX 75202" (or the event's city when it is set). */
-export function cityOf(city: string, address: string) {
-  if (city.trim()) return city.trim();
-  const parts = address.split(",").map((p) => p.trim()).filter(Boolean);
-  if (parts.length < 2) return "";
-  const last = parts[parts.length - 1].replace(/\s*\d{5}(-\d{4})?$/, "").trim();
-  if (parts.length === 2) return last;
-  return last ? `${parts[parts.length - 2]}, ${last}` : parts[parts.length - 2];
-}
-
-export const mapsLink = (venueName: string, address: string) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([venueName, address].filter(Boolean).join(", "))}`;
 
 function todayIn(tz: string) {
   try {
@@ -35,34 +26,27 @@ function todayIn(tz: string) {
   }
 }
 
-function SwitchEvent() {
-  const { slug } = useEventApp();
-  const mine = trpc.core.events.mine.useQuery();
-  const [open, setOpen] = useState(false);
-  const events = (mine.data ?? []).filter((e) => e.isAttendee);
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
-  if (events.length < 2) return <span />;
+const KIND_LABELS: Record<string, string> = { attendee: "Attendee", speaker: "Speaker", vendor: "Exhibitor", staff: "Staff", guest: "Guest", volunteer: "Volunteer", sponsor: "Sponsor" };
+
+function HomeHero() {
+  const { event } = useEventApp();
+  const day = dayOfEvent(todayIn(event.timezone), event.startDate, event.endDate);
+  const appName = event.branding.appName || event.shortName;
+  const monogram = appName.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("");
   return (
-    <>
-      <button type="button" className="switch" aria-expanded={open} onClick={() => setOpen(!open)}>
-        Switch event
-      </button>
-      {open ? (
-        <div className="event-switch" role="menu" aria-label="Your events">
-          {events.map((e) => (
-            <a key={e.id} role="menuitem" href={`/e/${e.slug}/home`} aria-current={e.slug === slug}>
-              <span className="strong" style={{ fontSize: 14 }}>{e.name}</span>
-              <span className="small muted">{fmtDates(e.startDate, e.endDate)}</span>
-            </a>
-          ))}
+    <div className="home-hero" style={event.coverUrl ? { backgroundImage: `url("${event.coverUrl.replace(/"/g, "%22")}")` } : undefined}>
+      <div className="home-hero-in">
+        <div className="host">
+          <span className="mark">{event.logoUrl ? <img src={event.logoUrl} alt="" /> : monogram}</span>
+          Hosted by {event.orgName}
         </div>
-      ) : null}
-    </>
+        <h1>{event.name}</h1>
+        <div className="when">
+          <span>{fmtDates(event.startDate, event.endDate)}</span>
+          {day ? <span className="day">{day}</span> : null}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -92,6 +76,79 @@ function UpNext() {
         <Link href={`${base}/session/${next.id}`} className="btn btn-primary">View</Link>
       )}
     </div>
+  );
+}
+
+/** The attendee's pass: who they are, their badge, their profile, and their other events when they have some. */
+function PassCard() {
+  const { slug, me, base } = useEventApp();
+  const mine = trpc.core.events.mine.useQuery();
+  const [open, setOpen] = useState(false);
+  const a = me.attendee;
+  if (!a) return null;
+  const events = (mine.data ?? []).filter((e) => e.isAttendee);
+  const line = [KIND_LABELS[a.kind] ?? "Attendee", a.organization].filter(Boolean).join(" · ");
+  return (
+    <>
+      <div className="home-lab">Your pass</div>
+      <div className="home-pass">
+        <Link href={`${base}/badge`} className="who" aria-label="Show my badge">
+          <span className="face">{a.photoUrl ? <img src={a.photoUrl} alt="" /> : initials(a.firstName, a.lastName)}</span>
+          <span className="col" style={{ minWidth: 0, gap: 2 }}>
+            <b className="clip">{a.firstName} {a.lastName}</b>
+            {line ? <small className="clip">{line}</small> : null}
+          </span>
+          <span className="qr" aria-hidden="true"><IconQr size={26} /></span>
+        </Link>
+        <div className="acts" style={{ gridTemplateColumns: events.length > 1 ? "1fr 1fr 1fr" : "1fr 1fr" }}>
+          <Link href={`${base}/badge`}><IconBadge size={16} />My badge</Link>
+          <Link href={`${base}/profile`}><IconUser size={16} />Edit profile</Link>
+          {events.length > 1 ? (
+            <button type="button" onClick={() => setOpen(true)}><IconCalendar size={16} />My events ({events.length})</button>
+          ) : null}
+        </div>
+      </div>
+      <Sheet open={open} onClose={() => setOpen(false)} label="My events">
+        <div className="col" style={{ gap: 4 }}>
+          <b style={{ fontSize: 17, margin: "4px 0 6px" }}>My events</b>
+          {events.map((e) => (
+            <a key={e.id} className="home-evrow" href={`/e/${e.slug}/home`} aria-current={e.slug === slug ? "page" : undefined} onClick={(ev) => (e.slug === slug ? (ev.preventDefault(), setOpen(false)) : undefined)}>
+              <span className="mark">{e.logoUrl ? <img src={e.logoUrl} alt="" /> : e.shortName.slice(0, 2).toUpperCase()}</span>
+              <span className="col" style={{ minWidth: 0, gap: 2 }}>
+                <b className="clip">{e.name}</b>
+                <small className="clip">{[fmtDates(e.startDate, e.endDate), e.city].filter(Boolean).join(" · ")}</small>
+              </span>
+              <span className="go">{e.slug === slug ? "Open now" : "Switch"}</span>
+            </a>
+          ))}
+        </div>
+      </Sheet>
+    </>
+  );
+}
+
+/** Hotel name, full address and a live map. */
+function VenueCard({ hasMaps }: { hasMaps: boolean }) {
+  const { event, base } = useEventApp();
+  if (!event.venueName && !hasPlace(event)) return null;
+  const lines = addressLines(event);
+  return (
+    <>
+      <div className="home-lab">Where</div>
+      <div className="home-venue2">
+        {hasPlace(event) ? <MapPreview venue={event} height={160} className="map" /> : null}
+        <div className="info">
+          {event.venueName ? <b>{event.venueName}</b> : null}
+          {lines.map((l, i) => (
+            <span key={i}>{l}</span>
+          ))}
+        </div>
+        <div className="acts" style={{ gridTemplateColumns: hasMaps ? "1fr 1fr" : "1fr" }}>
+          <a className="btn btn-primary" href={directionsLink(event)} target="_blank" rel="noopener noreferrer"><IconPin size={16} />Directions</a>
+          {hasMaps ? <Link className="btn" href={`${base}/map`}><IconMap size={16} />Venue map</Link> : null}
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -134,7 +191,7 @@ function SponsorBanner() {
   );
 }
 
-type Tile = { label: string; href: string; icon: ReactNode; show: boolean; dot?: boolean; external?: boolean };
+type Item = { label: string; href: string; icon: ReactNode; show: boolean; dot?: boolean; badge?: number; external?: boolean };
 
 export function HomeScreen() {
   const { slug, event, me, base } = useEventApp();
@@ -144,81 +201,66 @@ export function HomeScreen() {
   const speakerPage = trpc.program.slides.mySpeakerPage.useQuery({ slug });
   const isBooth = me.staff.kinds.includes("booth") || me.staff.vendorIds.length > 0;
   const seenAt = photosSeenAt(event.id, me.attendee?.id ?? 0);
-  const city = cityOf(event.city, event.venueAddress);
-  const appName = event.branding.appName || event.shortName;
-  const monogram = appName.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("");
 
-  const tiles: Tile[] = [
-    { label: "My agenda", href: `${base}/my`, icon: <IconBookmark size={22} />, show: !!me.attendee },
-    { label: "Speakers", href: `${base}/speakers`, icon: <IconMic size={22} />, show: true },
-    { label: "Sponsors", href: `${base}/exhibitors`, icon: <IconStore size={22} />, show: f.exhibitors },
-    { label: "Photos", href: `${base}/photos`, icon: <IconImage size={22} />, show: f.photos, dot: (photosLatest.data ?? 0) > seenAt },
-    { label: "Venue map", href: `${base}/map`, icon: <IconMap size={22} />, show: !!maps.data?.length },
-    { label: "CE credits", href: `${base}/credits`, icon: <IconAward size={22} />, show: !!me.attendee },
-    { label: "My badge", href: `${base}/badge`, icon: <IconBadge size={22} />, show: !!me.attendee },
-    { label: "Dining", href: `${base}/dining`, icon: <IconFood size={22} />, show: f.dining },
-    { label: "Nearby", href: `${base}/nearby`, icon: <IconPin size={22} />, show: true },
-    { label: "Help", href: `${base}/help`, icon: <IconHelp size={22} />, show: true },
-    { label: "Lost and found", href: `${base}/lost-found`, icon: <IconSearch size={22} />, show: true },
-    { label: "About host", href: `${base}/host`, icon: <IconInfo size={22} />, show: true },
-    { label: "My profile", href: `${base}/profile`, icon: <IconUser size={22} />, show: !!me.attendee },
-    { label: "Alerts", href: `${base}/alerts`, icon: <IconBell size={22} />, show: true, dot: me.unread > 0 },
-    { label: "Speaker page", href: speakerPage.data?.url ?? "", icon: <IconMic size={22} />, show: !!speakerPage.data?.url, external: true },
-    { label: "Scan leads", href: `${base}/leads`, icon: <IconQr size={22} />, show: isBooth },
+  const rail: Item[] = [
+    { label: "My agenda", href: `${base}/my`, icon: <IconBookmark size={24} />, show: !!me.attendee },
+    { label: "Speakers", href: `${base}/speakers`, icon: <IconMic size={24} />, show: true },
+    { label: "Sponsors", href: `${base}/exhibitors`, icon: <IconStore size={24} />, show: f.exhibitors },
+    { label: "Photos", href: `${base}/photos`, icon: <IconImage size={24} />, show: f.photos, dot: (photosLatest.data ?? 0) > seenAt },
   ];
+  const more: Item[] = [
+    { label: "Alerts", href: `${base}/alerts`, icon: <IconBell size={20} />, show: true, badge: me.unread },
+    { label: "CE credits", href: `${base}/credits`, icon: <IconAward size={20} />, show: !!me.attendee },
+    { label: "Dining", href: `${base}/dining`, icon: <IconFood size={20} />, show: f.dining },
+    { label: "Nearby", href: `${base}/nearby`, icon: <IconPin size={20} />, show: true },
+    { label: "About host", href: `${base}/host`, icon: <IconInfo size={20} />, show: true },
+    { label: "Help", href: `${base}/help`, icon: <IconHelp size={20} />, show: true },
+    { label: "Lost and found", href: `${base}/lost-found`, icon: <IconSearch size={20} />, show: true },
+    { label: "Speaker page", href: speakerPage.data?.url ?? "", icon: <IconMic size={20} />, show: !!speakerPage.data?.url, external: true },
+    { label: "Scan leads", href: `${base}/leads`, icon: <IconQr size={20} />, show: isBooth },
+  ];
+  const shownRail = rail.filter((r) => r.show);
 
   return (
-    <AppScreen
-      nav="home"
-      header={
-        <header className="home-top">
-          <ProfileChip />
-          <div className="title">Home</div>
-          <SwitchEvent />
-        </header>
-      }
-      bodyStyle={{ padding: 0, gap: 0 }}
-    >
-      <div className="home-cover" style={event.coverUrl ? { backgroundImage: `url("${event.coverUrl.replace(/"/g, "%22")}")` } : undefined}>
-        <div className="home-logo">{event.logoUrl ? <img src={event.logoUrl} alt={`${event.orgName} logo`} /> : <span aria-label={appName}>{monogram}</span>}</div>
-      </div>
-      <div className="home-event">
-        <h1>{event.name}</h1>
-        <div className="meta">
-          {city ? (
-            <>
-              {city}
-              <br />
-            </>
-          ) : null}
-          {fmtDates(event.startDate, event.endDate)}
-        </div>
-      </div>
-      {event.venueName || event.venueAddress ? (
-        <a className="home-venue" href={mapsLink(event.venueName, event.venueAddress)} target="_blank" rel="noopener noreferrer" aria-label={`Open ${event.venueName || "the venue"} in Google Maps`}>
-          <em className="pin" aria-hidden="true" />
-          <span>{event.venueName || event.venueAddress} →</span>
-        </a>
-      ) : null}
-      <UpNext />
-      <div className="home-sect">Explore</div>
-      <div className="home-grid">
-        {tiles
-          .filter((t) => t.show)
-          .map((t) =>
-            t.external ? (
-              <a key={t.label} href={t.href} className="home-tile2">
-                {t.icon}
-                {t.label}
-              </a>
-            ) : (
-              <Link key={t.label} href={t.href} className="home-tile2" aria-label={t.dot ? `${t.label}, new` : undefined}>
-                {t.icon}
-                {t.label}
-                {t.dot ? <span className="home-dot" aria-hidden="true" /> : null}
+    <AppScreen nav="home" bodyStyle={{ padding: 0, gap: 0 }}>
+      <HomeHero />
+      <div className="home-wrap">
+        <UpNext />
+        {shownRail.length ? (
+          <div className="home-rail" style={{ gridTemplateColumns: `repeat(${Math.max(shownRail.length, 3)}, minmax(0, 1fr))` }}>
+            {shownRail.map((r) => (
+              <Link key={r.label} href={r.href} aria-label={r.dot ? `${r.label}, new` : undefined}>
+                <span className="ring">
+                  {r.icon}
+                  {r.dot ? <i className="home-dot" aria-hidden="true" /> : null}
+                </span>
+                {r.label}
               </Link>
-            )
-          )}
+            ))}
+          </div>
+        ) : null}
+        <PassCard />
+        <VenueCard hasMaps={!!maps.data?.length} />
+        <div className="home-lab">More</div>
+        <div className="home-list">
+          {more
+            .filter((m) => m.show)
+            .map((m) => {
+              const inner = (
+                <>
+                  {m.icon}
+                  <span className="grow">{m.label}</span>
+                  {m.badge ? <em>{m.badge > 99 ? "99+" : m.badge}</em> : null}
+                  <IconChevron size={16} />
+                </>
+              );
+              return m.external ? (
+                <a key={m.label} href={m.href}>{inner}</a>
+              ) : (
+                <Link key={m.label} href={m.href}>{inner}</Link>
+              );
+            })}
+        </div>
       </div>
       <div style={{ flex: 1 }} />
       <SponsorBanner />

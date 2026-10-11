@@ -31,7 +31,10 @@ export function publicEvent(ev: typeof schema.events.$inferSelect) {
     timezone: ev.timezone,
     venueName: ev.venueName,
     venueAddress: ev.venueAddress,
+    venueAddress2: ev.venueAddress2,
     city: ev.city,
+    state: ev.state,
+    zip: ev.zip,
     status: ev.status,
     branding: ev.branding,
     logoUrl: fileUrl(ev.branding.logoFileId ?? org.logoFileId),
@@ -175,7 +178,10 @@ export const coreRouter = router({
           timezone: z.string().max(60).default("America/Chicago"),
           venueName: z.string().max(160).default(""),
           venueAddress: z.string().max(240).default(""),
+          venueAddress2: z.string().max(120).default(""),
           city: z.string().max(120).default(""),
+          state: z.string().trim().toUpperCase().max(2).default(""),
+          zip: z.string().trim().max(10).default(""),
         })
       )
       .mutation(async ({ ctx, input }) => {
@@ -273,7 +279,10 @@ export const coreRouter = router({
           timezone: z.string().max(60),
           venueName: z.string().max(160),
           venueAddress: z.string().max(240),
+          venueAddress2: z.string().max(120).optional(),
           city: z.string().max(120),
+          state: z.string().trim().toUpperCase().max(2).optional(),
+          zip: z.union([z.literal(""), z.string().trim().regex(/^\d{5}(-\d{4})?$/, "Enter a 5 digit ZIP code.")]).optional(),
           capacity: z.number().int().positive().nullable(),
           status: z.enum(["draft", "live", "ended"]),
         })

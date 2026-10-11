@@ -102,7 +102,12 @@ export const events = sqliteTable(
     timezone: text("timezone").notNull().default("America/Chicago"),
     venueName: text("venue_name").notNull().default(""),
     venueAddress: text("venue_address").notNull().default(""),
+    /** Suite, building or floor. venueAddress is the street line. */
+    venueAddress2: text("venue_address2").notNull().default(""),
     city: text("city").notNull().default(""),
+    /** Two letter state, "TX". */
+    state: text("state").notNull().default(""),
+    zip: text("zip").notNull().default(""),
     capacity: integer("capacity"),
     status: text("status", { enum: ["draft", "live", "ended"] }).notNull().default("draft"),
     branding: text("branding", { mode: "json" }).$type<EventBranding>().notNull().default(sql`'{"colorPrimary":"#1F5F4A","colorAccent":"#e88a3a"}'`),

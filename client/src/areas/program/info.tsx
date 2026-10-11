@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "wouter";
 import { trpc } from "../../lib/trpc";
 import { AppScreen, BrandHeader, useEventApp } from "../../shells/AttendeeShell";
-import { Empty, ErrorNote, Field, PageLoading, Pill, Sheet, CloseButton } from "../../ui/components";
+import { Empty, ErrorNote, Field, Lightbox, PageLoading, Pill, Sheet, CloseButton } from "../../ui/components";
 import { PushToggle } from "../../ui/PushToggle";
 import {
   IconAward, IconBadge, IconBell, IconChevron, IconClock, IconFood, IconHelp, IconImage, IconInfo, IconMap, IconMessage, IconPeople, IconPin, IconQr, IconSearch, IconStore, IconUser, IconFolder,
@@ -323,6 +323,52 @@ function ContactRow({ icon, children, href, last }: { icon: ReactNode; children:
   );
 }
 
+type HostPerson = { id: number; name: string; title: string; workplace: string; groupLabel: string; bio: string; photoUrl: string | null };
+
+const initialsOf = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("");
+
+/** The host's people under each heading; a tap opens the bio in a lightbox with a large photo. */
+function HostPeople({ groups }: { groups: { label: string; people: HostPerson[] }[] }) {
+  const [open, setOpen] = useState<HostPerson | null>(null);
+  if (!groups.length) return null;
+  return (
+    <>
+      {groups.map((g) => (
+        <section key={g.label} className="col" style={{ gap: 10 }}>
+          <div className="row gap-8" style={{ alignItems: "baseline" }}>
+            <h2 style={{ fontSize: 16, fontWeight: 800, margin: 0 }}>{g.label}</h2>
+            <span className="small muted">{g.people.length}</span>
+          </div>
+          <div className="host-people">
+            {g.people.map((p) => (
+              <button key={p.id} type="button" className="host-person" onClick={() => setOpen(p)} aria-label={`${p.name}, read bio`}>
+                <span className="face">{p.photoUrl ? <img src={p.photoUrl} alt="" /> : initialsOf(p.name)}</span>
+                <b>{p.name}</b>
+                {p.title ? <small>{p.title}</small> : null}
+              </button>
+            ))}
+          </div>
+        </section>
+      ))}
+      <Lightbox open={!!open} onClose={() => setOpen(null)} label={open ? `${open.name} bio` : "Bio"}>
+        {open ? (
+          <>
+            {open.photoUrl ? <img className="lightbox-photo" src={open.photoUrl} alt={open.name} /> : <div className="lightbox-initials" aria-hidden="true">{initialsOf(open.name)}</div>}
+            <div className="lightbox-body">
+              <div className="col" style={{ gap: 4 }}>
+                <span className="host-group-pill">{open.groupLabel}</span>
+                <span style={{ fontSize: 20, fontWeight: 800 }}>{open.name}</span>
+                {open.title || open.workplace ? <span className="muted" style={{ fontSize: 13.5 }}>{[open.title, open.workplace].filter(Boolean).join(" · ")}</span> : null}
+              </div>
+              {open.bio ? <div style={{ fontSize: 14, lineHeight: 1.6, color: "var(--ink-2)", whiteSpace: "pre-wrap" }}>{open.bio}</div> : null}
+            </div>
+          </>
+        ) : null}
+      </Lightbox>
+    </>
+  );
+}
+
 /** /e/:slug/host */
 export function HostScreen() {
   const { slug } = useEventApp();
@@ -370,6 +416,7 @@ export function HostScreen() {
           ))}
         </div>
       ) : null}
+      <HostPeople groups={h.groups} />
     </AppScreen>
   );
 }
