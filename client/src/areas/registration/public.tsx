@@ -10,7 +10,8 @@ import { EmbeddedCheckout, EmbeddedCheckoutProvider } from "@stripe/react-stripe
 import { trpc } from "../../lib/trpc";
 import { brandStyle } from "../../shells/AttendeeShell";
 import { ErrorNote, PageLoading, QR, Spinner } from "../../ui/components";
-import { IconCheck, IconLeaf, IconLock } from "../../ui/icons";
+import { IconCheck, IconLock } from "../../ui/icons";
+import { PoweredByLogo } from "../../ui/Logo";
 import { errorText, toast } from "../../ui/toast";
 import { isIOS, isStandalone } from "../../lib/push";
 import { fmtDate, fmtDates, fmtMoney } from "@shared/format";
@@ -776,9 +777,8 @@ export function GetAppScreen({ slug }: { slug: string }) {
             <span className="muted" style={{ fontSize: 13, lineHeight: 1.45 }}>Scan this with your phone's camera to open this page there.</span>
           </div>
         </div>
-        <div className="row small muted strong" style={{ marginTop: "auto", padding: "8px 0 16px", justifyContent: "center", gap: 6 }}>
-          <IconLeaf size={16} />
-          Powered by LeadDash Events
+        <div style={{ marginTop: "auto", padding: "8px 0 16px" }}>
+          <PoweredByLogo />
         </div>
       </main>
     </div>

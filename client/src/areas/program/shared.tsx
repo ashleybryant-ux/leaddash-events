@@ -4,7 +4,8 @@ import { Link } from "wouter";
 import { trpc } from "../../lib/trpc";
 import { useEventApp } from "../../shells/AttendeeShell";
 import { Lightbox, Spinner } from "../../ui/components";
-import { IconBack, IconLeaf } from "../../ui/icons";
+import { IconBack } from "../../ui/icons";
+import { PoweredByLogo } from "../../ui/Logo";
 import { fmtDate, fmtHours, fmtTime } from "@shared/format";
 
 /** "1.5 CE" */
@@ -46,12 +47,7 @@ export function TopBar({ title, back, children }: { title: string; back?: string
 }
 
 export function PoweredBy() {
-  return (
-    <div className="row small strong muted" style={{ justifyContent: "center", gap: 6, paddingTop: 6 }}>
-      <IconLeaf size={16} />
-      Powered by LeadDash Events
-    </div>
-  );
+  return <PoweredByLogo />;
 }
 
 /** Number tile on the green header (My agenda stats). */

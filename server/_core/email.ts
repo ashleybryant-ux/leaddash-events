@@ -141,7 +141,7 @@ export function emailLayout(opts: { brand: string; accent: string; coverUrl?: st
 ${opts.title ? `<h1 style="margin:0 0 12px;font-size:22px">${escapeHtml(opts.title)}</h1>` : ""}
 ${opts.blocks.join("\n")}
 </td></tr>
-<tr><td style="padding:16px 24px 24px;font-size:12px;color:#4B5B57">${opts.footer ?? "Sent with LeadDash Events"}</td></tr>
+<tr><td style="padding:16px 24px 24px;font-size:12px;color:#4B5B57">${opts.footer ?? "Sent with LeadDash Events"}<img src="${ENV.appUrl}/brand/leaddash-events.png" alt="LeadDash Events" width="96" height="32" style="display:block;margin-top:10px;border:0;height:32px;width:96px"></td></tr>
 </table></td></tr></table></body></html>`;
 }
 

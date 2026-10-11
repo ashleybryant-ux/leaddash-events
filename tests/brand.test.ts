@@ -85,3 +85,11 @@ describe("app look", () => {
     expect(emailLayout({ brand: "#1D4E89", accent: "#2BB3C0", blocks: [] })).toContain("height:8px;background:#1D4E89");
   });
 });
+
+describe("LeadDash Events logo in emails", () => {
+  it("puts the logo under the footer of every email", () => {
+    const html = emailLayout({ brand: "#1F5F4A", accent: "#E88A3A", blocks: ["<p>Hi</p>"] });
+    expect(html).toContain("/brand/leaddash-events.png");
+    expect(html).toContain('alt="LeadDash Events"');
+  });
+});

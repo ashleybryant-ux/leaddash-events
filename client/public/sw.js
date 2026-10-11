@@ -1,5 +1,5 @@
 /* LeadDash Events service worker: push notices and an offline fallback for the app shell. */
-const SHELL = "ld-events-shell-v1";
+const SHELL = "ld-events-shell-v2";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(SHELL).then((c) => c.addAll(["/", "/icon-192.png"])).then(() => self.skipWaiting()));

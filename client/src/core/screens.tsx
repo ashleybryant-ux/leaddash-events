@@ -9,7 +9,8 @@ import { fmtDates, fmtMoney } from "@shared/format";
 import { US_STATES, addressLines, hasPlace, mapsLink } from "@shared/address";
 import { MapPreview } from "../ui/MapPreview";
 import { SignIn } from "./SignIn";
-import { IconCheck, IconLeaf } from "../ui/icons";
+import { IconCheck } from "../ui/icons";
+import { LeadDashLogo } from "../ui/Logo";
 
 /** "/": where a signed-in person goes (their events, admin). */
 export function HomeScreen() {
@@ -21,11 +22,7 @@ export function HomeScreen() {
     <div className="app">
       <header className="app-header">
         <div className="row">
-          <IconLeaf />
-          <div className="wordmark-text">
-            <b>LEADDASH</b>
-            <span>EVENTS</span>
-          </div>
+          <LeadDashLogo tone="white" height={44} />
         </div>
       </header>
       <main className="app-body">

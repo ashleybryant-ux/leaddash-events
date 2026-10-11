@@ -11,7 +11,8 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { Link, useLocation, useSearch } from "wouter";
 import { trpc, type RouterOutputs } from "../lib/trpc";
 import { ErrorNote, PageLoading } from "../ui/components";
-import { IconAward, IconCalendar, IconChart, IconChevron, IconFolder, IconGear, IconHome, IconLeaf, IconMenu, IconMoney, IconPeople, IconPhone, IconSearch, IconSignOut, IconStar, IconTicket, IconTools } from "../ui/icons";
+import { LeadDashLogo } from "../ui/Logo";
+import { IconAward, IconCalendar, IconChart, IconChevron, IconFolder, IconGear, IconHome, IconMenu, IconMoney, IconPeople, IconPhone, IconSearch, IconSignOut, IconStar, IconTicket, IconTools } from "../ui/icons";
 import { SignIn } from "../core/SignIn";
 import { fmtDates } from "@shared/format";
 
@@ -67,11 +68,7 @@ export function AdminApp({ eventId, children }: { eventId?: number; children: Re
       <div className="center" style={{ minHeight: "100dvh", padding: 16 }}>
         <div className="card card-pad" style={{ width: "100%", maxWidth: 420, padding: 28 }}>
           <div className="row" style={{ marginBottom: 18 }}>
-            <IconLeaf />
-            <div className="wordmark-text" style={{ color: "var(--ink)" }}>
-              <b>LEADDASH</b>
-              <span>EVENTS</span>
-            </div>
+            <LeadDashLogo height={52} />
           </div>
           <SignIn title="Admin sign-in" subtitle="Enter your email. We will send you a six-digit code." variant="admin" />
         </div>
@@ -322,11 +319,7 @@ export function AdminPage({ title: givenTitle, sub: givenSub, actions, children,
     <div className="admin">
       <aside className={`admin-aside${open ? " open" : ""}`} aria-label="Main">
         <Link href={isOrgAdmin ? "/admin" : current ? `/admin/e/${current.id}` : "/admin"} className="wordmark" onClick={() => setOpen(false)}>
-          <IconLeaf />
-          <span className="wordmark-text">
-            <b>LEADDASH</b>
-            <span>EVENTS</span>
-          </span>
+          <LeadDashLogo tone="white" height={46} />
         </Link>
         <label className="side-search">
           <IconSearch />
