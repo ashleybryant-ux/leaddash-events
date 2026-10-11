@@ -86,3 +86,20 @@ describe("event location", () => {
     expect(dayOfEvent("2027-04-21", "2027-04-22", "2027-04-24")).toBe("");
   });
 });
+
+describe("sign-in page sponsors", () => {
+  beforeEach(async () => {
+    await freshDb();
+  });
+
+  it("shows confirmed sponsors without sign-in, and nothing while the event is a draft", async () => {
+    const { event } = await setupEvent();
+    const { caller } = await import("./helpers");
+    getDb().insert(schema.vendors).values({ eventId: event.id, company: "Brightpath Health", kind: "sponsor", status: "paid", visible: true }).run();
+    getDb().insert(schema.vendors).values({ eventId: event.id, company: "Lead Only Co", kind: "sponsor", status: "lead", visible: true }).run();
+    expect(await caller(null).network.exhibitors.welcomeSponsors({ slug: event.slug })).toEqual([]);
+    getDb().update(schema.events).set({ status: "live" }).where(eq(schema.events.id, event.id)).run();
+    const list = await caller(null).network.exhibitors.welcomeSponsors({ slug: event.slug });
+    expect(list.map((s) => s.company)).toEqual(["Brightpath Health"]);
+  });
+});
