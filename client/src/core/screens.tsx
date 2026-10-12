@@ -313,6 +313,8 @@ export function OrgSettingsScreen() {
   const update = trpc.core.org.update.useMutation();
   const addAdmin = trpc.core.org.addAdmin.useMutation();
   const removeAdmin = trpc.core.org.removeAdmin.useMutation();
+  const transfer = trpc.core.org.transferOwner.useMutation();
+  const [handing, setHanding] = useState<number | null>(null);
   const [draft, setDraft] = useState<{ name: string; colorPrimary: string; colorAccent: string; colorHighlight: string; logoFileId: number | null; logoUrl: string | null; allEvents?: boolean } | null>(null);
   const [invite, setInvite] = useState({ email: "", name: "" });
   if (!orgId) return <AdminPage title="Organization settings"><Empty>Pick an organization on the Events screen first.</Empty></AdminPage>;
@@ -392,27 +394,73 @@ export function OrgSettingsScreen() {
           <span className="h3" style={{ fontSize: 14 }}>Admin team</span>
         </div>
         <div className="list">
-          {(team.data ?? []).map((t) => (
-            <div key={t.id} className="row" style={{ padding: "10px 0" }}>
-              <span className="strong grow">{t.name || t.email}</span>
-              <span className="muted grow">{t.email}</span>
-              <Pill tone={t.role === "owner" ? "orange" : "gray"}>{t.role === "owner" ? "Owner" : "Admin"}</Pill>
-              {t.role !== "owner" && o.role !== "admin" ? (
-                <button
-                  className="btn btn-sm btn-w"
-                  onClick={async () => {
-                    if (!confirmAction(`Remove ${t.email} from the admin team?`)) return;
-                    await removeAdmin.mutateAsync({ orgId, memberRowId: t.id }).catch((err) => toast(errorText(err), true));
-                    utils.core.org.team.invalidate();
-                  }}
-                >
-                  Remove
-                </button>
-              ) : (
-                <span style={{ width: 96 }} />
-              )}
-            </div>
-          ))}
+          {(team.data ?? []).map((t) => {
+            const who = t.name || t.email;
+            const open = handing === t.id;
+            return (
+              <div key={t.id} className="col">
+                <div className="row team-row" style={{ padding: "10px 0" }}>
+                  <span className="strong grow">{who}</span>
+                  <span className="muted grow team-email">{t.email}</span>
+                  <Pill tone={t.role === "owner" ? "orange" : "gray"}>{t.role === "owner" ? "Owner" : "Admin"}</Pill>
+                  {/* Only the owner hands the organization on; LeadDash staff do it from LeadDash tools. */}
+                  {t.role !== "owner" && o.role === "owner" ? (
+                    <button className="btn btn-sm btn-w-lg" aria-expanded={open} onClick={() => setHanding(open ? null : t.id)}>
+                      {open ? "Close" : "Make owner"}
+                    </button>
+                  ) : o.role === "owner" ? (
+                    <span style={{ width: 120 }} />
+                  ) : null}
+                  {t.role !== "owner" && o.role !== "admin" ? (
+                    <button
+                      className="btn btn-sm btn-w-lg"
+                      onClick={async () => {
+                        if (!confirmAction(`Remove ${t.email} from the admin team?`)) return;
+                        await removeAdmin.mutateAsync({ orgId, memberRowId: t.id }).catch((err) => toast(errorText(err), true));
+                        utils.core.org.team.invalidate();
+                      }}
+                    >
+                      Remove
+                    </button>
+                  ) : (
+                    <span style={{ width: 120 }} />
+                  )}
+                </div>
+                {open ? (
+                  <div className="owner-confirm">
+                    <div className="col gap-6">
+                      <span className="strong">Make {who} the owner?</span>
+                      <ul>
+                        <li>{who} can add and remove admins, including you, and transfer ownership again.</li>
+                        <li>You stay on the team as an admin.</li>
+                        <li>Payment notices and replies from vendors go to {who}, unless a checkout page has its own notice email.</li>
+                      </ul>
+                    </div>
+                    <div className="row gap-8 wrap">
+                      <button
+                        className="btn btn-sm btn-solid btn-w-lg"
+                        style={{ width: 170 }}
+                        disabled={transfer.isPending}
+                        onClick={async () => {
+                          try {
+                            await transfer.mutateAsync({ orgId, memberRowId: t.id });
+                            setHanding(null);
+                            await Promise.all([utils.core.org.team.invalidate(), utils.core.org.get.invalidate(), utils.auth.me.invalidate()]);
+                            toast(`${who} is the owner now.`);
+                          } catch (err) {
+                            toast(errorText(err), true);
+                          }
+                        }}
+                      >
+                        Transfer ownership
+                      </button>
+                      <button className="btn btn-sm btn-w-lg" onClick={() => setHanding(null)}>Cancel</button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
         {o.role !== "admin" ? (
           <div className="row gap-8" style={{ maxWidth: 640 }}>
@@ -461,6 +509,7 @@ export function LeadDashToolsScreen() {
       {params.get("platform") === "connected" ? <div className="banner banner-ok">The LeadDash platform is connected.</div> : null}
       {params.get("platform") === "failed" ? <div className="banner banner-bad">The LeadDash platform connection did not finish. Try again.</div> : null}
         <StaffEventsCard orgId={orgId} allowance={o.eventAllowance} />
+        <StaffOwnerCard orgId={orgId} />
         <div className="card card-pad col gap-12">
           <span className="h3" style={{ fontSize: 14 }}>LeadDash platform</span>
           <KV label="Marketplace app">{platform.data?.configured ? "Set on the server" : "GHL_CLIENT_ID and GHL_CLIENT_SECRET are not set"}</KV>
@@ -494,6 +543,47 @@ export function LeadDashToolsScreen() {
           </div>
         </div>
     </AdminPage>
+  );
+}
+
+/** LeadDash tools: who owns the organization, for when an owner leaves without handing it on. */
+function StaffOwnerCard({ orgId }: { orgId: number }) {
+  const utils = trpc.useUtils();
+  const team = trpc.core.org.team.useQuery({ orgId });
+  const transfer = trpc.core.org.transferOwner.useMutation();
+  const owner = (team.data ?? []).find((t) => t.role === "owner");
+  const admins = (team.data ?? []).filter((t) => t.role !== "owner");
+  const [pick, setPick] = useState<number | "">("");
+  return (
+    <div className="card card-pad col gap-12">
+      <EditSection
+        title="Owner"
+        saving={transfer.isPending}
+        onCancel={() => setPick("")}
+        onSave={async () => {
+          if (!pick) throw new Error("Pick someone on the admin team.");
+          await transfer.mutateAsync({ orgId, memberRowId: pick });
+          await Promise.all([utils.core.org.team.invalidate(), utils.core.org.get.invalidate()]);
+          setPick("");
+          toast("Saved");
+        }}
+        view={<KV label="Owner">{owner ? `${owner.name || owner.email} · ${owner.email}` : "No owner"}</KV>}
+        edit={
+          admins.length ? (
+            <Field label="New owner">
+              <select className="input" style={{ maxWidth: 360 }} value={pick} onChange={(e) => setPick(e.target.value ? Number(e.target.value) : "")}>
+                <option value="">Pick someone on the admin team</option>
+                {admins.map((a) => (
+                  <option key={a.id} value={a.id}>{`${a.name || a.email} · ${a.email}`}</option>
+                ))}
+              </select>
+            </Field>
+          ) : (
+            <span className="small muted">Add the new owner to the admin team on Organization settings first.</span>
+          )
+        }
+      />
+    </div>
   );
 }
 
@@ -819,7 +909,7 @@ export function EventSettingsScreen() {
 /** One brand color: a small square, its label and its hex (or a note when it is not set). */
 function Swatch({ label, color, empty }: { label: string; color: string; empty?: string }) {
   return (
-    <span className="row gap-6">
+    <span className="row gap-6" style={{ flexWrap: "wrap", minWidth: 0 }}>
       <span style={{ width: 18, height: 18, borderRadius: 4, background: color || "transparent", border: color ? "none" : "1px dashed var(--line)", display: "inline-block" }} />
       <span className="muted small">{label}</span>
       <span>{color || <span className="muted">{empty}</span>}</span>

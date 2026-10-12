@@ -676,3 +676,14 @@ h1, h2, h3 { margin: 0; }
   .as-tiles i { width: 34px; height: 34px; flex-shrink: 0; border-radius: 10px; background: var(--brand-tint); color: var(--brand); display: inline-flex; align-items: center; justify-content: center; }
   .as-tiles i svg { width: 20px; height: 20px; }
 }
+
+/* Organization settings: confirming a new owner, open below the row. */
+.owner-confirm { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center; background: var(--brand-tint); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; }
+.owner-confirm ul { margin: 0; padding-left: 18px; line-height: 1.6; color: var(--ink-2); }
+@media (max-width: 760px) { .owner-confirm { grid-template-columns: minmax(0, 1fr); } }
+/* Admin team rows on a phone: name and email on their own lines, then the role and buttons. */
+@media (max-width: 760px) {
+  .team-row { flex-wrap: wrap; gap: 8px; }
+  .team-row > .strong, .team-row > .team-email { flex: 1 1 100%; min-width: 0; overflow-wrap: anywhere; }
+  .team-row > span[style*="width: 120"] { display: none; }
+}

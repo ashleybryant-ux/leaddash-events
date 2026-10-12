@@ -12,6 +12,8 @@ import { sign } from "../_core/crypto";
 import { slugify } from "@shared/format";
 import { eventHasEnded } from "@shared/time";
 import { userForEmail } from "./auth";
+import { emailButton, emailLayout, escapeHtml, sendEmail } from "../_core/email";
+import { fmtDate } from "@shared/format";
 import { seedEvent } from "../areas";
 
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/);
@@ -137,6 +139,53 @@ export const coreRouter = router({
       if (row.role === "owner") throw new TRPCError({ code: "BAD_REQUEST", message: "The owner cannot be removed." });
       getDb().delete(schema.orgMembers).where(eq(schema.orgMembers.id, row.id)).run();
       return { ok: true };
+    }),
+
+    /**
+     * Hands the organization to someone on its admin team. The owner does it
+     * from Organization settings; LeadDash staff from LeadDash tools when an
+     * owner can't. The old owner stays on as an admin. Notices that go to the
+     * owner (vendor payments, failed ticket payments, the last fallback for
+     * vendor replies) follow the new owner. The new owner gets an email.
+     */
+    transferOwner: protectedProcedure.input(z.object({ orgId: z.number(), memberRowId: z.number() })).mutation(async ({ ctx, input }) => {
+      const role = requireOrgAdmin(ctx.user, input.orgId);
+      if (role !== "owner" && !isLeadDashStaff(ctx.user)) throw forbidden("Only the owner can transfer ownership.");
+      const db = getDb();
+      const row = db.select().from(schema.orgMembers).where(eq(schema.orgMembers.id, input.memberRowId)).get();
+      if (!row || row.orgId !== input.orgId) throw forbidden();
+      if (row.role === "owner") throw new TRPCError({ code: "BAD_REQUEST", message: "They already own this organization." });
+      const next = db.select().from(schema.users).where(eq(schema.users.id, row.userId)).get()!;
+      const owners = db.select().from(schema.orgMembers).where(and(eq(schema.orgMembers.orgId, input.orgId), eq(schema.orgMembers.role, "owner"))).all();
+      const before = owners.length ? db.select().from(schema.users).where(inArray(schema.users.id, owners.map((o) => o.userId))).all() : [];
+      db.transaction((tx) => {
+        for (const o of owners) tx.update(schema.orgMembers).set({ role: "admin" }).where(eq(schema.orgMembers.id, o.id)).run();
+        tx.update(schema.orgMembers).set({ role: "owner" }).where(eq(schema.orgMembers.id, row.id)).run();
+      });
+      const name = (u: { name: string | null; email: string }) => u.name || u.email;
+      const from = before.map(name).join(", ") || "no one";
+      audit(ctx.user, { orgId: input.orgId, action: "org.transfer_owner", detail: `From ${from} to ${name(next)}` });
+      const org = db.select().from(schema.organizations).where(eq(schema.organizations.id, input.orgId)).get()!;
+      const by = ctx.user.name || ctx.user.email;
+      const today = fmtDate(new Date().toISOString().slice(0, 10));
+      const url = `${ENV.appUrl}/admin`;
+      const text = `${by} made you the owner of ${org.name} on LeadDash Events on ${today}. You can now add and remove admins and manage every event. Sign in with this email address at ${url}.`;
+      try {
+        await sendEmail({
+          to: next.email,
+          subject: `You're now the owner of ${org.name}`,
+          text,
+          html: emailLayout({
+            brand: "#1F5F4A",
+            accent: "#e88a3a",
+            title: `You own ${org.name} now`,
+            blocks: [`<p>Hi ${escapeHtml(next.name || "there")},</p>`, `<p>${escapeHtml(by)} made you the owner of ${escapeHtml(org.name)} on LeadDash Events on ${today}. You can now add and remove admins and manage every event.</p>`, emailButton("Open LeadDash Events", url, "#e88a3a"), `<p style="color:#4B5B57">Sign in with this email address.</p>`],
+          }),
+        });
+      } catch (err) {
+        console.error("[org] owner email:", err);
+      }
+      return { ok: true, owner: name(next) };
     }),
 
     /** Every organization (LeadDash staff only). */
